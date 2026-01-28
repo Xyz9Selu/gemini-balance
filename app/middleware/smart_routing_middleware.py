@@ -44,19 +44,7 @@ class SmartRoutingMiddleware(BaseHTTPMiddleware):
         if "generatecontent" in path.lower() or "v1beta/models" in path.lower():
             return self.fix_gemini_by_operation(path, method, request)
 
-        # 2. 第二优先级：包含/openai/ → OpenAI格式
-        if "/openai/" in path.lower():
-            return self.fix_openai_by_operation(path, method)
-
-        # 3. 第三优先级：包含/v1/ → v1格式
-        if "/v1/" in path.lower():
-            return self.fix_v1_by_operation(path, method)
-
-        # 4. 第四优先级：包含/chat/completions → chat功能
-        if "/chat/completions" in path.lower():
-            return "/v1/chat/completions", {"type": "v1_chat"}
-
-        # 5. 默认：原样传递
+        # 默认：原样传递
         return path, None
 
     def is_already_correct_format(self, path: str) -> bool:
@@ -67,12 +55,8 @@ class SmartRoutingMiddleware(BaseHTTPMiddleware):
             r"^/gemini/v1beta/models/[^/:]+:(generate|streamGenerate)Content$",  # Gemini带前缀
             r"^/v1beta/models$",  # Gemini模型列表
             r"^/gemini/v1beta/models$",  # Gemini带前缀的模型列表
-            r"^/v1/(chat/completions|models|embeddings|images/generations|audio/speech)$",  # v1格式
-            r"^/openai/v1/(chat/completions|models|embeddings|images/generations|audio/speech)$",  # OpenAI格式
-            r"^/hf/v1/(chat/completions|models|embeddings|images/generations|audio/speech)$",  # HF格式
             r"^/vertex-express/v1beta/models/[^/:]+:(generate|streamGenerate)Content$",  # Vertex Express Gemini格式
             r"^/vertex-express/v1beta/models$",  # Vertex Express模型列表
-            r"^/vertex-express/v1/(chat/completions|models|embeddings|images/generations)$",  # Vertex Express OpenAI格式
         ]
 
         for pattern in correct_patterns:
@@ -136,40 +120,6 @@ class SmartRoutingMiddleware(BaseHTTPMiddleware):
             }
 
         return target_url, fix_info
-
-    def fix_openai_by_operation(self, path: str, method: str) -> tuple:
-        """根据操作类型修复OpenAI格式"""
-        if method == "POST":
-            if "chat" in path.lower() or "completion" in path.lower():
-                return "/openai/v1/chat/completions", {"type": "openai_chat"}
-            elif "embedding" in path.lower():
-                return "/openai/v1/embeddings", {"type": "openai_embeddings"}
-            elif "image" in path.lower():
-                return "/openai/v1/images/generations", {"type": "openai_images"}
-            elif "audio" in path.lower():
-                return "/openai/v1/audio/speech", {"type": "openai_audio"}
-        elif method == "GET":
-            if "model" in path.lower():
-                return "/openai/v1/models", {"type": "openai_models"}
-
-        return path, None
-
-    def fix_v1_by_operation(self, path: str, method: str) -> tuple:
-        """根据操作类型修复v1格式"""
-        if method == "POST":
-            if "chat" in path.lower() or "completion" in path.lower():
-                return "/v1/chat/completions", {"type": "v1_chat"}
-            elif "embedding" in path.lower():
-                return "/v1/embeddings", {"type": "v1_embeddings"}
-            elif "image" in path.lower():
-                return "/v1/images/generations", {"type": "v1_images"}
-            elif "audio" in path.lower():
-                return "/v1/audio/speech", {"type": "v1_audio"}
-        elif method == "GET":
-            if "model" in path.lower():
-                return "/v1/models", {"type": "v1_models"}
-
-        return path, None
 
     def detect_stream_request(self, path: str, request: Request) -> bool:
         """检测是否为流式请求"""

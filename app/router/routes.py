@@ -13,10 +13,9 @@ from app.router import (
     config_routes,
     error_log_routes,
     files_routes,
-    gemini_routes,
+    gemini_proxy_routes,
+    key_tools_routes,
     key_routes,
-    openai_compatiable_routes,
-    openai_routes,
     scheduler_routes,
     stats_routes,
     version_routes,
@@ -40,15 +39,18 @@ def setup_routers(app: FastAPI) -> None:
     Args:
         app: FastAPI应用程序实例
     """
-    app.include_router(openai_routes.router)
-    app.include_router(gemini_routes.router)
-    app.include_router(gemini_routes.router_v1beta)
+    # Admin key tools and other Gemini helper endpoints (non-proxy)
+    app.include_router(key_tools_routes.router)
+    app.include_router(key_tools_routes.router_v1beta)
+
+    # Gemini transparent transmission proxy (raw /v1beta/**)
+    # Keep this AFTER key-tools to avoid the proxy catch-all shadowing UI helper endpoints.
+    app.include_router(gemini_proxy_routes.router)
     app.include_router(config_routes.router)
     app.include_router(error_log_routes.router)
     app.include_router(scheduler_routes.router)
     app.include_router(stats_routes.router)
     app.include_router(version_routes.router)
-    app.include_router(openai_compatiable_routes.router)
     app.include_router(vertex_express_routes.router)
     app.include_router(files_routes.router)
     app.include_router(key_routes.router)

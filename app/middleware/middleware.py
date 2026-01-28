@@ -27,11 +27,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
             request.url.path not in ["/", "/auth"]
             and not request.url.path.startswith("/static")
             and not request.url.path.startswith("/gemini")
-            and not request.url.path.startswith("/v1")
             and not request.url.path.startswith(f"/{API_VERSION}")
             and not request.url.path.startswith("/health")
-            and not request.url.path.startswith("/hf")
-            and not request.url.path.startswith("/openai")
             and not request.url.path.startswith("/api/version/check")
             and not request.url.path.startswith("/vertex-express")
             and not request.url.path.startswith("/upload")

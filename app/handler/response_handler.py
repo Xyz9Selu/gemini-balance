@@ -1,6 +1,4 @@
 import base64
-import json
-import random
 import string
 import time
 import uuid
@@ -8,11 +6,11 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
 from app.config.config import settings
-from app.log.logger import get_openai_logger
+from app.log.logger import get_gemini_logger
 from app.utils.helpers import is_image_upload_configured
 from app.utils.uploader import ImageUploaderFactory
 
-logger = get_openai_logger()
+logger = get_gemini_logger()
 
 
 class ResponseHandler(ABC):
@@ -42,159 +40,6 @@ class GeminiResponseHandler(ResponseHandler):
         if stream:
             return _handle_gemini_stream_response(response, model, stream)
         return _handle_gemini_normal_response(response, model, stream)
-
-
-def _handle_openai_stream_response(
-    response: Dict[str, Any],
-    model: str,
-    finish_reason: str,
-    usage_metadata: Optional[Dict[str, Any]],
-) -> Dict[str, Any]:
-    choices = []
-    candidates = response.get("candidates", [])
-
-    for candidate in candidates:
-        index = candidate.get("index", 0)
-        text, reasoning_content, tool_calls, _ = _extract_result(
-            {"candidates": [candidate]}, model, stream=True, gemini_format=False
-        )
-
-        if not text and not tool_calls and not reasoning_content:
-            delta = {}
-        else:
-            delta = {
-                "content": text,
-                "reasoning_content": reasoning_content,
-                "role": "assistant",
-            }
-            if tool_calls:
-                delta["tool_calls"] = tool_calls
-
-        choice = {"index": index, "delta": delta, "finish_reason": finish_reason}
-        choices.append(choice)
-
-    template_chunk = {
-        "id": f"chatcmpl-{uuid.uuid4()}",
-        "object": "chat.completion.chunk",
-        "created": int(time.time()),
-        "model": model,
-        "choices": choices,
-    }
-    if usage_metadata:
-        template_chunk["usage"] = {
-            "prompt_tokens": usage_metadata.get("promptTokenCount", 0),
-            "completion_tokens": usage_metadata.get("candidatesTokenCount", 0),
-            "total_tokens": usage_metadata.get("totalTokenCount", 0),
-        }
-    return template_chunk
-
-
-def _handle_openai_normal_response(
-    response: Dict[str, Any],
-    model: str,
-    finish_reason: str,
-    usage_metadata: Optional[Dict[str, Any]],
-) -> Dict[str, Any]:
-    choices = []
-    candidates = response.get("candidates", [])
-
-    for i, candidate in enumerate(candidates):
-        text, reasoning_content, tool_calls, _ = _extract_result(
-            {"candidates": [candidate]}, model, stream=False, gemini_format=False
-        )
-        choice = {
-            "index": i,
-            "message": {
-                "role": "assistant",
-                "content": text,
-                "reasoning_content": reasoning_content,
-                "tool_calls": tool_calls,
-            },
-            "finish_reason": finish_reason,
-        }
-        choices.append(choice)
-
-    return {
-        "id": f"chatcmpl-{uuid.uuid4()}",
-        "object": "chat.completion",
-        "created": int(time.time()),
-        "model": model,
-        "choices": choices,
-        "usage": {
-            "prompt_tokens": usage_metadata.get("promptTokenCount", 0),
-            "completion_tokens": usage_metadata.get("candidatesTokenCount", 0),
-            "total_tokens": usage_metadata.get("totalTokenCount", 0),
-        },
-    }
-
-
-class OpenAIResponseHandler(ResponseHandler):
-    """OpenAI响应处理器"""
-
-    def __init__(self, config):
-        self.config = config
-        self.thinking_first = True
-        self.thinking_status = False
-
-    def handle_response(
-        self,
-        response: Dict[str, Any],
-        model: str,
-        stream: bool = False,
-        finish_reason: str = None,
-        usage_metadata: Optional[Dict[str, Any]] = None,
-    ) -> Optional[Dict[str, Any]]:
-        if stream:
-            return _handle_openai_stream_response(
-                response, model, finish_reason, usage_metadata
-            )
-        return _handle_openai_normal_response(
-            response, model, finish_reason, usage_metadata
-        )
-
-    def handle_image_chat_response(
-        self, image_str: str, model: str, stream=False, finish_reason="stop"
-    ):
-        if stream:
-            return _handle_openai_stream_image_response(image_str, model, finish_reason)
-        return _handle_openai_normal_image_response(image_str, model, finish_reason)
-
-
-def _handle_openai_stream_image_response(
-    image_str: str, model: str, finish_reason: str
-) -> Dict[str, Any]:
-    return {
-        "id": f"chatcmpl-{uuid.uuid4()}",
-        "object": "chat.completion.chunk",
-        "created": int(time.time()),
-        "model": model,
-        "choices": [
-            {
-                "index": 0,
-                "delta": {"content": image_str} if image_str else {},
-                "finish_reason": finish_reason,
-            }
-        ],
-    }
-
-
-def _handle_openai_normal_image_response(
-    image_str: str, model: str, finish_reason: str
-) -> Dict[str, Any]:
-    return {
-        "id": f"chatcmpl-{uuid.uuid4()}",
-        "object": "chat.completion",
-        "created": int(time.time()),
-        "model": model,
-        "choices": [
-            {
-                "index": 0,
-                "message": {"role": "assistant", "content": image_str},
-                "finish_reason": finish_reason,
-            }
-        ],
-        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
-    }
 
 
 def _extract_result(

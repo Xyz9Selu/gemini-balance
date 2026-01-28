@@ -11,9 +11,8 @@ from app.core.constants import (
     DEFAULT_STREAM_MIN_DELAY,
     DEFAULT_STREAM_SHORT_TEXT_THRESHOLD,
 )
-from app.log.logger import get_gemini_logger, get_openai_logger
+from app.log.logger import get_gemini_logger
 
-logger_openai = get_openai_logger()
 logger_gemini = get_gemini_logger()
 
 
@@ -122,16 +121,6 @@ class StreamOptimizer:
                 yield format_chunk(char_chunk)
                 await asyncio.sleep(delay)
 
-
-# 创建默认的优化器实例，可以直接导入使用
-openai_optimizer = StreamOptimizer(
-    logger=logger_openai,
-    min_delay=settings.STREAM_MIN_DELAY,
-    max_delay=settings.STREAM_MAX_DELAY,
-    short_text_threshold=settings.STREAM_SHORT_TEXT_THRESHOLD,
-    long_text_threshold=settings.STREAM_LONG_TEXT_THRESHOLD,
-    chunk_size=settings.STREAM_CHUNK_SIZE,
-)
 
 gemini_optimizer = StreamOptimizer(
     logger=logger_gemini,

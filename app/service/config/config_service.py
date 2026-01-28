@@ -238,8 +238,43 @@ class ConfigService:
                     detail="No valid API keys available to fetch model list.",
                 )
 
-            models = await model_service.get_gemini_openai_models(api_key)
-            return models
+            gemini_models = await model_service.get_gemini_models(api_key)
+            if not gemini_models or "models" not in gemini_models:
+                raise HTTPException(
+                    status_code=500, detail="Failed to fetch Gemini models list."
+                )
+
+            # Keep a stable shape for the existing UI code:
+            # { object: "list", data: [{id: "..."}], success: true }
+            data: List[Dict[str, Any]] = []
+
+            seen = set()
+            for m in gemini_models.get("models", []):
+                name = (m or {}).get("name") or ""
+                model_id = name.split("/")[-1] if name else ""
+                if not model_id or model_id in seen:
+                    continue
+                seen.add(model_id)
+                data.append({"id": model_id})
+
+                # Derived IDs (these are just convenience IDs for UI selection)
+                if model_id in settings.SEARCH_MODELS:
+                    derived = f"{model_id}-search"
+                    if derived not in seen:
+                        seen.add(derived)
+                        data.append({"id": derived})
+                if model_id in settings.IMAGE_MODELS:
+                    derived = f"{model_id}-image"
+                    if derived not in seen:
+                        seen.add(derived)
+                        data.append({"id": derived})
+                if model_id in settings.THINKING_MODELS:
+                    derived = f"{model_id}-non-thinking"
+                    if derived not in seen:
+                        seen.add(derived)
+                        data.append({"id": derived})
+
+            return {"object": "list", "data": data, "success": True}
         except HTTPException as e:
             raise e
         except Exception as e:
