@@ -1,6 +1,5 @@
 fastapi
 httpx[socks]
-openai
 pydantic
 pydantic_settings
 requests

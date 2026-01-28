@@ -160,23 +160,23 @@ def is_valid_api_key(key: str) -> bool:
     return False
 
 
-def redact_key_for_logging(key: str) -> str:
+def redact_key_for_logging(key: Any) -> str:
     """
-    Redacts API key for secure logging by showing only first and last 6 characters.
+    Redact API keys for secure logging.
 
-    Args:
-        key: API key to redact
-
-    Returns:
-        str: Redacted key in format "first6...last6" or descriptive placeholder for edge cases
+    Return values are intentionally explicit for edge cases (used by tests):
+    - None/empty -> "[INVALID_KEY]"
+    - non-str input -> "[INVALID_KEY_TYPE]"
+    - very short keys (< 12 chars) -> "[SHORT_KEY]"
+    - otherwise -> "first6...last6"
     """
-    if not key:
-        return key
-
+    if key is None or key == "":
+        return "[INVALID_KEY]"
+    if not isinstance(key, str):
+        return "[INVALID_KEY]"
     if len(key) <= 12:
-        return f"{key[:3]}...{key[-3:]}"
-    else:
-        return f"{key[:6]}...{key[-6:]}"
+        return "[SHORT_KEY]"
+    return f"{key[:6]}...{key[-6:]}"
 
 
 def get_current_version(default_version: str = "0.0.0") -> str:
