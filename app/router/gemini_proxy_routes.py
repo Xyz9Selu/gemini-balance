@@ -9,6 +9,8 @@ key switching retries on transient failures.
 from __future__ import annotations
 
 import datetime
+import json
+import re
 import time
 from typing import AsyncGenerator, Dict, Iterable, Optional, Tuple
 
@@ -18,9 +20,10 @@ from fastapi.responses import Response, StreamingResponse
 
 from app.config.config import settings
 from app.core.security import SecurityService
-from app.database.services import add_error_log, add_request_log
+from app.database.services import add_error_log, add_request_log, get_file_api_key
 from app.log.logger import get_gemini_logger
 from app.service.key.key_manager import KeyManager, get_key_manager_instance
+from app.utils.helpers import redact_key_for_logging
 
 logger = get_gemini_logger()
 security_service = SecurityService()
@@ -114,12 +117,60 @@ def _extract_model_name_from_path(path: str) -> Optional[str]:
         return None
 
 
+def _extract_file_references_from_body(body: bytes) -> list[str]:
+    """
+    Extract file references from request body.
+    Files are referenced as fileData.fileUri in the contents parts.
+    """
+    file_names = []
+    try:
+        if not body:
+            return file_names
+        
+        payload = json.loads(body)
+        contents = payload.get("contents", [])
+        
+        for content in contents:
+            if not isinstance(content, dict) or "parts" not in content:
+                continue
+            
+            parts = content.get("parts", [])
+            for part in parts:
+                if not isinstance(part, dict) or "fileData" not in part:
+                    continue
+                
+                file_data = part.get("fileData", {})
+                if not isinstance(file_data, dict) or "fileUri" not in file_data:
+                    continue
+                
+                file_uri = file_data.get("fileUri", "")
+                # Extract file name from URI
+                # Format: https://generativelanguage.googleapis.com/v1beta/files/{file_id}
+                # or: files/{file_id}
+                match = re.match(
+                    rf"{re.escape(settings.BASE_URL)}/(files/.*)", file_uri
+                )
+                if match:
+                    file_name = match.group(1)
+                    file_names.append(file_name)
+                    logger.info(f"Found file reference in request: {file_name}")
+                elif file_uri.startswith("files/"):
+                    # Direct file reference without full URL
+                    file_names.append(file_uri)
+                    logger.info(f"Found direct file reference in request: {file_uri}")
+    except (json.JSONDecodeError, KeyError, TypeError) as e:
+        logger.debug(f"Failed to extract file references from body: {e}")
+    
+    return file_names
+
+
 async def _proxy_once(
     request: Request,
     upstream_url: str,
     outgoing_headers: Dict[str, str],
     timeout_s: float,
     stream: bool,
+    body: Optional[bytes] = None,
 ) -> Tuple[int, Dict[str, str], bytes, Optional[AsyncGenerator[bytes, None]]]:
     """
     Execute a single upstream call.
@@ -127,7 +178,8 @@ async def _proxy_once(
     Returns: (status_code, headers, body, stream_iter)
     """
     method = request.method.upper()
-    body = await request.body()
+    if body is None:
+        body = await request.body()
 
     timeout = httpx.Timeout(timeout_s, read=timeout_s)
 
@@ -199,6 +251,32 @@ async def gemini_v1beta_proxy(
     last_status: Optional[int] = None
     api_key: Optional[str] = None
 
+    # Read request body once (can only be read once)
+    request_body: Optional[bytes] = None
+    if request.method in ("POST", "PUT", "PATCH"):
+        request_body = await request.body()
+    
+    # Check for file references in the request body and get the appropriate API key
+    has_file_references = False
+    file_specific_api_key: Optional[str] = None
+    if request_body:
+        file_names = _extract_file_references_from_body(request_body)
+        if file_names:
+            has_file_references = True
+            logger.info(f"Request contains file references: {file_names}")
+            # Use the API key from the first file (if multiple files, they should use the same key)
+            file_api_key = await get_file_api_key(file_names[0])
+            if file_api_key:
+                logger.info(
+                    f"Using API key from file {file_names[0]}: {redact_key_for_logging(file_api_key)}"
+                )
+                api_key = file_api_key
+                file_specific_api_key = file_api_key
+            else:
+                logger.warning(
+                    f"No API key found for file {file_names[0]}, will use default key selection"
+                )
+
     # Prepare headers (copy most inbound headers through)
     outgoing_headers = _filter_outgoing_headers(request.scope.get("headers", []))
     # Apply configured custom headers (server-side override)
@@ -221,6 +299,7 @@ async def gemini_v1beta_proxy(
                 outgoing_headers=outgoing_headers,
                 timeout_s=settings.TIME_OUT,
                 stream=stream,
+                body=request_body,
             )
 
             last_status = status_code
@@ -255,13 +334,24 @@ async def gemini_v1beta_proxy(
                 error_type="gemini-proxy",
                 error_log=last_error,
                 error_code=status_code,
-                request_msg=(await request.body()) if settings.ERROR_LOG_RECORD_REQUEST_BODY else None,
+                request_msg=json.loads(request_body.decode("utf-8", errors="replace")) if (settings.ERROR_LOG_RECORD_REQUEST_BODY and request_body) else None,
                 request_datetime=request_datetime,
             )
 
-            api_key = await key_manager.handle_api_failure(api_key, retries)
-            if not api_key:
-                break
+            # If we're using a file-specific API key, don't switch keys on retry
+            # because the file can only be accessed with its original key
+            if has_file_references and file_specific_api_key and api_key == file_specific_api_key:
+                logger.warning(
+                    f"Request with file references failed with API key {redact_key_for_logging(api_key)}. "
+                    f"Cannot switch keys as file can only be accessed with its original key."
+                )
+                # Still allow retry with the same key in case of transient errors
+                if retries >= settings.MAX_RETRIES:
+                    break
+            else:
+                api_key = await key_manager.handle_api_failure(api_key, retries)
+                if not api_key:
+                    break
 
         except httpx.RequestError as e:
             last_error = str(e)
@@ -272,12 +362,21 @@ async def gemini_v1beta_proxy(
                 error_type="gemini-proxy-network",
                 error_log=last_error,
                 error_code=None,
-                request_msg=(await request.body()) if settings.ERROR_LOG_RECORD_REQUEST_BODY else None,
+                request_msg=json.loads(request_body.decode("utf-8", errors="replace")) if (settings.ERROR_LOG_RECORD_REQUEST_BODY and request_body) else None,
                 request_datetime=request_datetime,
             )
-            api_key = await key_manager.handle_api_failure(api_key or "", retries)
-            if not api_key:
-                break
+            # If we're using a file-specific API key, don't switch keys on retry
+            if has_file_references and file_specific_api_key and api_key == file_specific_api_key:
+                logger.warning(
+                    f"Request with file references failed with network error. "
+                    f"Cannot switch keys as file can only be accessed with its original key."
+                )
+                if retries >= settings.MAX_RETRIES:
+                    break
+            else:
+                api_key = await key_manager.handle_api_failure(api_key or "", retries)
+                if not api_key:
+                    break
 
     # Final failure: return last observed status/body if available, else 502.
     latency_ms = int((time.perf_counter() - start_time) * 1000)
