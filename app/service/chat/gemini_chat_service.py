@@ -395,6 +395,21 @@ class GeminiChatService:
         self, model: str, request: GeminiRequest, api_key: str
     ) -> Dict[str, Any]:
         """计算token数量"""
+        # 檢查並獲取文件專用的 API key（如果有文件）
+        file_names = _extract_file_references(request.model_dump().get("contents", []))
+        if file_names:
+            logger.info(f"Request contains file references: {file_names}")
+            file_api_key = await get_file_api_key(file_names[0])
+            if file_api_key:
+                logger.info(
+                    f"Found API key for file {file_names[0]}: {redact_key_for_logging(file_api_key)}"
+                )
+                api_key = file_api_key  # 使用文件的 API key
+            else:
+                logger.warning(
+                    f"No API key found for file {file_names[0]}, using default key: {redact_key_for_logging(api_key)}"
+                )
+        
         # countTokens API只需要contents
         payload = {
             "contents": _filter_empty_parts(request.model_dump().get("contents", []))
