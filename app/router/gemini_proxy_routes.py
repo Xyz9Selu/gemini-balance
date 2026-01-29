@@ -69,6 +69,10 @@ def _filter_incoming_headers(headers: Iterable[Tuple[str, str]]) -> Dict[str, st
         if lk == "set-cookie":
             # upstream should not set cookies for API requests; drop defensively
             continue
+        if lk == "content-encoding":
+            # httpx automatically decompresses gzip/deflate responses, so remove this header
+            # to avoid "incorrect header check" errors in clients like n8n
+            continue
         out[k] = v
     return out
 

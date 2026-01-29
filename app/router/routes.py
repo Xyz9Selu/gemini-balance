@@ -44,7 +44,8 @@ def setup_routers(app: FastAPI) -> None:
     app.include_router(key_tools_routes.router_v1beta)
 
     # Gemini transparent transmission proxy (raw /v1beta/**)
-    # Keep this AFTER key-tools to avoid the proxy catch-all shadowing UI helper endpoints.
+    # This handles all Gemini API requests including /models, /models/{model}:generateContent, etc.
+    # It automatically picks an API key and proxies requests transparently to Gemini API.
     app.include_router(gemini_proxy_routes.router)
     app.include_router(config_routes.router)
     app.include_router(error_log_routes.router)
