@@ -8,11 +8,8 @@ const MAP_VALUE_INPUT_CLASS = "map-value-input";
 const CUSTOM_HEADER_ITEM_CLASS = "custom-header-item";
 const CUSTOM_HEADER_KEY_INPUT_CLASS = "custom-header-key-input";
 const CUSTOM_HEADER_VALUE_INPUT_CLASS = "custom-header-value-input";
-const SAFETY_SETTING_ITEM_CLASS = "safety-setting-item";
 const SHOW_CLASS = "show"; // For modals
 const API_KEY_REGEX = /AIzaSy\S{33}/g;
-const PROXY_REGEX =
-  /(?:https?|socks5):\/\/(?:[^:@\/]+(?::[^@\/]+)?@)?(?:[^:\/\s]+)(?::\d+)?/g;
 const VERTEX_API_KEY_REGEX = /AQ\.[a-zA-Z0-9_\-]{50}/g; // 新增 Vertex Express API Key 正则
 const MASKED_VALUE = "••••••••";
 
@@ -24,21 +21,11 @@ let allApiKeys = []; // 存储所有API密钥数据
 let filteredApiKeys = []; // 存储过滤后的API密钥数据
 
 // DOM Elements - Global Scope for frequently accessed elements
-const safetySettingsContainer = document.getElementById(
-  "SAFETY_SETTINGS_container"
-);
-const thinkingModelsContainer = document.getElementById(
-  "THINKING_MODELS_container"
-);
 const apiKeyModal = document.getElementById("apiKeyModal");
 const apiKeyBulkInput = document.getElementById("apiKeyBulkInput");
 const apiKeySearchInput = document.getElementById("apiKeySearchInput");
 const bulkDeleteApiKeyModal = document.getElementById("bulkDeleteApiKeyModal");
 const bulkDeleteApiKeyInput = document.getElementById("bulkDeleteApiKeyInput");
-const proxyModal = document.getElementById("proxyModal");
-const proxyBulkInput = document.getElementById("proxyBulkInput");
-const bulkDeleteProxyModal = document.getElementById("bulkDeleteProxyModal");
-const bulkDeleteProxyInput = document.getElementById("bulkDeleteProxyInput");
 const resetConfirmModal = document.getElementById("resetConfirmModal");
 const configForm = document.getElementById("configForm"); // Added for frequent use
 
@@ -95,14 +82,6 @@ document.addEventListener("DOMContentLoaded", function () {
       switchTab(tabId);
     });
   });
-
-  // Upload provider switching
-  const uploadProviderSelect = document.getElementById("UPLOAD_PROVIDER");
-  if (uploadProviderSelect) {
-    uploadProviderSelect.addEventListener("change", function () {
-      toggleProviderConfig(this.value);
-    });
-  }
 
   // 检查间隔小时数输入控制
   const checkIntervalInput = document.getElementById("CHECK_INTERVAL_HOURS");
@@ -215,83 +194,6 @@ document.addEventListener("DOMContentLoaded", function () {
       handleBulkDeleteApiKeys
     );
 
-  // Proxy Modal Elements and Events
-  const addProxyBtn = document.getElementById("addProxyBtn");
-  const closeProxyModalBtn = document.getElementById("closeProxyModalBtn");
-  const cancelAddProxyBtn = document.getElementById("cancelAddProxyBtn");
-  const confirmAddProxyBtn = document.getElementById("confirmAddProxyBtn");
-  
-  // Proxy Check Elements and Events
-  const checkAllProxiesBtn = document.getElementById("checkAllProxiesBtn");
-  const proxyCheckModal = document.getElementById("proxyCheckModal");
-  const closeProxyCheckModalBtn = document.getElementById("closeProxyCheckModalBtn");
-  const closeProxyCheckBtn = document.getElementById("closeProxyCheckBtn");
-  const retryFailedProxiesBtn = document.getElementById("retryFailedProxiesBtn");
-
-  if (addProxyBtn) {
-    addProxyBtn.addEventListener("click", () => {
-      openModal(proxyModal);
-      if (proxyBulkInput) proxyBulkInput.value = "";
-    });
-  }
-  
-  if (checkAllProxiesBtn) {
-    checkAllProxiesBtn.addEventListener("click", checkAllProxies);
-  }
-  
-  if (closeProxyCheckModalBtn) {
-    closeProxyCheckModalBtn.addEventListener("click", () => closeModal(proxyCheckModal));
-  }
-  
-  if (closeProxyCheckBtn) {
-    closeProxyCheckBtn.addEventListener("click", () => closeModal(proxyCheckModal));
-  }
-  
-  if (retryFailedProxiesBtn) {
-    retryFailedProxiesBtn.addEventListener("click", () => {
-      // 重试失败的代理检测
-      checkAllProxies();
-    });
-  }
-  if (closeProxyModalBtn)
-    closeProxyModalBtn.addEventListener("click", () => closeModal(proxyModal));
-  if (cancelAddProxyBtn)
-    cancelAddProxyBtn.addEventListener("click", () => closeModal(proxyModal));
-  if (confirmAddProxyBtn)
-    confirmAddProxyBtn.addEventListener("click", handleBulkAddProxies);
-
-  // Bulk Delete Proxy Modal Elements and Events
-  const bulkDeleteProxyBtn = document.getElementById("bulkDeleteProxyBtn");
-  const closeBulkDeleteProxyModalBtn = document.getElementById(
-    "closeBulkDeleteProxyModalBtn"
-  );
-  const cancelBulkDeleteProxyBtn = document.getElementById(
-    "cancelBulkDeleteProxyBtn"
-  );
-  const confirmBulkDeleteProxyBtn = document.getElementById(
-    "confirmBulkDeleteProxyBtn"
-  );
-
-  if (bulkDeleteProxyBtn) {
-    bulkDeleteProxyBtn.addEventListener("click", () => {
-      openModal(bulkDeleteProxyModal);
-      if (bulkDeleteProxyInput) bulkDeleteProxyInput.value = "";
-    });
-  }
-  if (closeBulkDeleteProxyModalBtn)
-    closeBulkDeleteProxyModalBtn.addEventListener("click", () =>
-      closeModal(bulkDeleteProxyModal)
-    );
-  if (cancelBulkDeleteProxyBtn)
-    cancelBulkDeleteProxyBtn.addEventListener("click", () =>
-      closeModal(bulkDeleteProxyModal)
-    );
-  if (confirmBulkDeleteProxyBtn)
-    confirmBulkDeleteProxyBtn.addEventListener(
-      "click",
-      handleBulkDeleteProxies
-    );
-
   // Reset Confirmation Modal Elements and Events
   const closeResetModalBtn = document.getElementById("closeResetModalBtn");
   const cancelResetBtn = document.getElementById("cancelResetBtn");
@@ -318,10 +220,8 @@ document.addEventListener("DOMContentLoaded", function () {
       apiKeyModal,
       resetConfirmModal,
       bulkDeleteApiKeyModal,
-      proxyModal,
-      bulkDeleteProxyModal,
-      vertexApiKeyModal, // 新增
-      bulkDeleteVertexApiKeyModal, // 新增
+      vertexApiKeyModal,
+      bulkDeleteVertexApiKeyModal,
       modelHelperModal,
     ];
     modals.forEach((modal) => {
@@ -351,28 +251,6 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
-  // Event delegation for THINKING_MODELS input changes to update budget map keys
-  if (thinkingModelsContainer) {
-    thinkingModelsContainer.addEventListener("input", function (event) {
-      const target = event.target;
-      if (
-        target &&
-        target.classList.contains(ARRAY_INPUT_CLASS) &&
-        target.closest(`.${ARRAY_ITEM_CLASS}[data-model-id]`)
-      ) {
-        const modelInput = target;
-        const modelItem = modelInput.closest(`.${ARRAY_ITEM_CLASS}`);
-        const modelId = modelItem.getAttribute("data-model-id");
-        const budgetKeyInput = document.querySelector(
-          `.${MAP_KEY_INPUT_CLASS}[data-model-id="${modelId}"]`
-        );
-        if (budgetKeyInput) {
-          budgetKeyInput.value = modelInput.value;
-        }
-      }
-    });
-  }
-
   // Event delegation for dynamically added remove buttons and generate token buttons within array items
   if (configForm) {
     // Ensure configForm exists before adding event listener
@@ -383,42 +261,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
       if (removeButton && removeButton.closest(`.${ARRAY_ITEM_CLASS}`)) {
         const arrayItem = removeButton.closest(`.${ARRAY_ITEM_CLASS}`);
-        const parentContainer = arrayItem.parentElement;
-        const isThinkingModelItem =
-          arrayItem.hasAttribute("data-model-id") &&
-          parentContainer &&
-          parentContainer.id === "THINKING_MODELS_container";
-        const isSafetySettingItem = arrayItem.classList.contains(
-          SAFETY_SETTING_ITEM_CLASS
-        );
-
-        if (isThinkingModelItem) {
-          const modelId = arrayItem.getAttribute("data-model-id");
-          const budgetMapItem = document.querySelector(
-            `.${MAP_ITEM_CLASS}[data-model-id="${modelId}"]`
-          );
-          if (budgetMapItem) {
-            budgetMapItem.remove();
-          }
-          // Check and add placeholder for budget map if empty
-          const budgetContainer = document.getElementById(
-            "THINKING_BUDGET_MAP_container"
-          );
-          if (budgetContainer && budgetContainer.children.length === 0) {
-            budgetContainer.innerHTML =
-              '<div class="text-gray-500 text-sm italic">请在上方添加思考模型，预算将自动关联。</div>';
-          }
-        }
         arrayItem.remove();
-        // Check and add placeholder for safety settings if empty
-        if (
-          isSafetySettingItem &&
-          parentContainer &&
-          parentContainer.children.length === 0
-        ) {
-          parentContainer.innerHTML =
-            '<div class="text-gray-500 text-sm italic">定义模型的安全过滤阈值。</div>';
-        }
       } else if (
         generateButton &&
         generateButton.closest(`.${ARRAY_ITEM_CLASS}`)
@@ -440,12 +283,6 @@ document.addEventListener("DOMContentLoaded", function () {
         }
       }
     });
-  }
-
-  // Add Safety Setting button
-  const addSafetySettingBtn = document.getElementById("addSafetySettingBtn");
-  if (addSafetySettingBtn) {
-    addSafetySettingBtn.addEventListener("click", () => addSafetySettingItem());
   }
 
   // Add Custom Header button
@@ -716,29 +553,6 @@ async function initConfig() {
       config.ALLOWED_TOKENS = [""];
     }
 
-    if (
-      !config.IMAGE_MODELS ||
-      !Array.isArray(config.IMAGE_MODELS) ||
-      config.IMAGE_MODELS.length === 0
-    ) {
-      config.IMAGE_MODELS = ["gemini-1.5-pro-latest"];
-    }
-
-    if (
-      !config.SEARCH_MODELS ||
-      !Array.isArray(config.SEARCH_MODELS) ||
-      config.SEARCH_MODELS.length === 0
-    ) {
-      config.SEARCH_MODELS = ["gemini-1.5-flash-latest"];
-    }
-
-    if (
-      !config.FILTERED_MODELS ||
-      !Array.isArray(config.FILTERED_MODELS) ||
-      config.FILTERED_MODELS.length === 0
-    ) {
-      config.FILTERED_MODELS = ["gemini-1.0-pro-latest"];
-    }
     // --- 新增：处理 VERTEX_API_KEYS 默认值 ---
     if (!config.VERTEX_API_KEYS || !Array.isArray(config.VERTEX_API_KEYS)) {
       config.VERTEX_API_KEYS = [];
@@ -746,21 +560,6 @@ async function initConfig() {
     // --- 新增：处理 VERTEX_EXPRESS_BASE_URL 默认值 ---
     if (typeof config.VERTEX_EXPRESS_BASE_URL === "undefined") {
       config.VERTEX_EXPRESS_BASE_URL = "";
-    }
-    // --- 新增：处理 PROXIES 默认值 ---
-    if (!config.PROXIES || !Array.isArray(config.PROXIES)) {
-      config.PROXIES = []; // 默认为空数组
-    }
-    // --- 新增：处理新字段的默认值 ---
-    if (!config.THINKING_MODELS || !Array.isArray(config.THINKING_MODELS)) {
-      config.THINKING_MODELS = []; // 默认为空数组
-    }
-    if (
-      !config.THINKING_BUDGET_MAP ||
-      typeof config.THINKING_BUDGET_MAP !== "object" ||
-      config.THINKING_BUDGET_MAP === null
-    ) {
-      config.THINKING_BUDGET_MAP = {}; // 默认为空对象
     }
     // --- 新增：处理 CUSTOM_HEADERS 默认值 ---
     if (
@@ -770,18 +569,6 @@ async function initConfig() {
     ) {
       config.CUSTOM_HEADERS = {}; // 默认为空对象
     }
-    // --- 新增：处理 SAFETY_SETTINGS 默认值 ---
-    if (!config.SAFETY_SETTINGS || !Array.isArray(config.SAFETY_SETTINGS)) {
-      config.SAFETY_SETTINGS = []; // 默认为空数组
-    }
-    // --- 结束：处理 SAFETY_SETTINGS 默认值 ---
-    if (typeof config.URL_CONTEXT_ENABLED === "undefined") {
-      config.URL_CONTEXT_ENABLED = true;
-    }
-    if (!config.URL_CONTEXT_MODELS || !Array.isArray(config.URL_CONTEXT_MODELS)) {
-      config.URL_CONTEXT_MODELS = [];
-    }
- 
     // --- 新增：处理自动删除错误日志配置的默认值 ---
     if (typeof config.AUTO_DELETE_ERROR_LOGS_ENABLED === "undefined") {
       config.AUTO_DELETE_ERROR_LOGS_ENABLED = false;
@@ -804,27 +591,11 @@ async function initConfig() {
     }
     // --- 结束：处理自动删除请求日志配置的默认值 ---
 
-    // --- 新增：处理假流式配置的默认值 ---
-    if (typeof config.FAKE_STREAM_ENABLED === "undefined") {
-      config.FAKE_STREAM_ENABLED = false;
-    }
-    if (typeof config.FAKE_STREAM_EMPTY_DATA_INTERVAL_SECONDS === "undefined") {
-      config.FAKE_STREAM_EMPTY_DATA_INTERVAL_SECONDS = 5;
-    }
-    // --- 结束：处理假流式配置的默认值 ---
-
     populateForm(config);
     // After populateForm, initialize masking for all populated sensitive fields
     if (configForm) {
       // Ensure form exists
       initializeSensitiveFields(); // Call initializeSensitiveFields to handle initial masking
-    }
-
-    // Ensure upload provider has a default value
-    const uploadProvider = document.getElementById("UPLOAD_PROVIDER");
-    if (uploadProvider && !uploadProvider.value) {
-      uploadProvider.value = "smms"; // 设置默认值为 smms
-      toggleProviderConfig("smms");
     }
 
     showNotification("配置加载成功", "success");
@@ -836,24 +607,13 @@ async function initConfig() {
     const defaultConfig = {
       API_KEYS: [""],
       ALLOWED_TOKENS: [""],
-      IMAGE_MODELS: ["gemini-1.5-pro-latest"],
-      SEARCH_MODELS: ["gemini-1.5-flash-latest"],
-      FILTERED_MODELS: ["gemini-1.0-pro-latest"],
-      UPLOAD_PROVIDER: "smms",
-      PROXIES: [],
       VERTEX_API_KEYS: [], // 确保默认值存在
       VERTEX_EXPRESS_BASE_URL: "", // 确保默认值存在
-      THINKING_MODELS: [],
-      THINKING_BUDGET_MAP: {},
       CUSTOM_HEADERS: {},
       AUTO_DELETE_ERROR_LOGS_ENABLED: false,
       AUTO_DELETE_ERROR_LOGS_DAYS: 7, // 新增默认值
       AUTO_DELETE_REQUEST_LOGS_ENABLED: false, // 新增默认值
       AUTO_DELETE_REQUEST_LOGS_DAYS: 30, // 新增默认值
-      // --- 新增：处理假流式配置的默认值 ---
-      FAKE_STREAM_ENABLED: false,
-      FAKE_STREAM_EMPTY_DATA_INTERVAL_SECONDS: 5,
-      // --- 结束：处理假流式配置的默认值 ---
     };
 
     populateForm(defaultConfig);
@@ -861,7 +621,6 @@ async function initConfig() {
       // Ensure form exists
       initializeSensitiveFields(); // Call initializeSensitiveFields to handle initial masking
     }
-    toggleProviderConfig("smms");
   }
 }
 
@@ -870,80 +629,11 @@ async function initConfig() {
  * @param {object} config - The configuration object.
  */
 function populateForm(config) {
-  const modelIdMap = {}; // modelName -> modelId
-
   // 1. Clear existing dynamic content first
   const arrayContainers = document.querySelectorAll(".array-container");
   arrayContainers.forEach((container) => {
     container.innerHTML = ""; // Clear all array containers
   });
-  const budgetMapContainer = document.getElementById(
-    "THINKING_BUDGET_MAP_container"
-  );
-  if (budgetMapContainer) {
-    budgetMapContainer.innerHTML = ""; // Clear budget map container
-  } else {
-    console.error("Critical: THINKING_BUDGET_MAP_container not found!");
-    return; // Cannot proceed
-  }
-
-  // 2. Populate THINKING_MODELS and build the map
-  if (Array.isArray(config.THINKING_MODELS)) {
-    const container = document.getElementById("THINKING_MODELS_container");
-    if (container) {
-      config.THINKING_MODELS.forEach((modelName) => {
-        if (modelName && typeof modelName === "string" && modelName.trim()) {
-          const trimmedModelName = modelName.trim();
-          const modelId = addArrayItemWithValue(
-            "THINKING_MODELS",
-            trimmedModelName
-          );
-          if (modelId) {
-            modelIdMap[trimmedModelName] = modelId;
-          } else {
-            console.warn(
-              `Failed to get modelId for THINKING_MODEL: '${trimmedModelName}'`
-            );
-          }
-        } else {
-          console.warn(`Invalid THINKING_MODEL entry found:`, modelName);
-        }
-      });
-    } else {
-      console.error("Critical: THINKING_MODELS_container not found!");
-    }
-  }
-
-  // 3. Populate THINKING_BUDGET_MAP using the map
-  let budgetItemsAdded = false;
-  if (
-    config.THINKING_BUDGET_MAP &&
-    typeof config.THINKING_BUDGET_MAP === "object"
-  ) {
-    for (const [modelName, budgetValue] of Object.entries(
-      config.THINKING_BUDGET_MAP
-    )) {
-      if (modelName && typeof modelName === "string") {
-        const trimmedModelName = modelName.trim();
-        const modelId = modelIdMap[trimmedModelName]; // Look up the ID
-        if (modelId) {
-          createAndAppendBudgetMapItem(trimmedModelName, budgetValue, modelId);
-          budgetItemsAdded = true;
-        } else {
-          console.warn(
-            `Budget map: Could not find model ID for '${trimmedModelName}'. Skipping budget item.`
-          );
-        }
-      } else {
-        console.warn(`Invalid key found in THINKING_BUDGET_MAP:`, modelName);
-      }
-    }
-  }
-  if (!budgetItemsAdded && budgetMapContainer) {
-    budgetMapContainer.innerHTML =
-      '<div class="text-gray-500 text-sm italic">请在上方添加思考模型，预算将自动关联。</div>';
-  }
-
   // Populate CUSTOM_HEADERS
   const customHeadersContainer = document.getElementById(
     "CUSTOM_HEADERS_container"
@@ -964,9 +654,9 @@ function populateForm(config) {
       '<div class="text-gray-500 text-sm italic">添加自定义请求头，例如 X-Api-Key: your-key</div>';
   }
 
-  // 4. Populate other array fields (excluding THINKING_MODELS and API_KEYS)
+  // 4. Populate other array fields (excluding API_KEYS which uses pagination)
   for (const [key, value] of Object.entries(config)) {
-    if (Array.isArray(value) && key !== "THINKING_MODELS" && key !== "API_KEYS") {
+    if (Array.isArray(value) && key !== "API_KEYS") {
       const container = document.getElementById(`${key}_container`);
       if (container) {
         value.forEach((itemValue) => {
@@ -1016,34 +706,6 @@ function populateForm(config) {
     }
   }
 
-  // 6. Initialize upload provider
-  const uploadProvider = document.getElementById("UPLOAD_PROVIDER");
-  if (uploadProvider) {
-    toggleProviderConfig(uploadProvider.value);
-  }
-
-  // Populate SAFETY_SETTINGS
-  let safetyItemsAdded = false;
-  if (safetySettingsContainer && Array.isArray(config.SAFETY_SETTINGS)) {
-    config.SAFETY_SETTINGS.forEach((setting) => {
-      if (
-        setting &&
-        typeof setting === "object" &&
-        setting.category &&
-        setting.threshold
-      ) {
-        addSafetySettingItem(setting.category, setting.threshold);
-        safetyItemsAdded = true;
-      } else {
-        console.warn("Invalid safety setting item found:", setting);
-      }
-    });
-  }
-  if (safetySettingsContainer && !safetyItemsAdded) {
-    safetySettingsContainer.innerHTML =
-      '<div class="text-gray-500 text-sm italic">定义模型的安全过滤阈值。</div>';
-  }
-
   // --- 新增：处理自动删除错误日志的字段 ---
   const autoDeleteEnabledCheckbox = document.getElementById(
     "AUTO_DELETE_ERROR_LOGS_ENABLED"
@@ -1087,26 +749,6 @@ function populateForm(config) {
     });
   }
   // --- 结束：处理自动删除请求日志的字段 ---
-
-  // --- 新增：处理假流式配置的字段 ---
-  const fakeStreamEnabledCheckbox = document.getElementById(
-    "FAKE_STREAM_ENABLED"
-  );
-  const fakeStreamIntervalInput = document.getElementById(
-    "FAKE_STREAM_EMPTY_DATA_INTERVAL_SECONDS"
-  );
-
-  if (fakeStreamEnabledCheckbox && fakeStreamIntervalInput) {
-    fakeStreamEnabledCheckbox.checked = !!config.FAKE_STREAM_ENABLED;
-    fakeStreamIntervalInput.value =
-      config.FAKE_STREAM_EMPTY_DATA_INTERVAL_SECONDS || 5;
-    // 根据复选框状态设置输入框的禁用状态 (如果需要)
-    // fakeStreamIntervalInput.disabled = !fakeStreamEnabledCheckbox.checked;
-    // fakeStreamEnabledCheckbox.addEventListener("change", function () {
-    //   fakeStreamIntervalInput.disabled = !this.checked;
-    // });
-  }
-  // --- 结束：处理假流式配置的字段 ---
 }
 
 /**
@@ -1329,77 +971,6 @@ function handleBulkDeleteApiKeys() {
 }
 
 /**
- * Handles the bulk addition of proxies from the modal input.
- */
-function handleBulkAddProxies() {
-  const proxyContainer = document.getElementById("PROXIES_container");
-  if (!proxyBulkInput || !proxyContainer || !proxyModal) return;
-
-  const bulkText = proxyBulkInput.value;
-  const extractedProxies = bulkText.match(PROXY_REGEX) || [];
-
-  const currentProxyInputs = proxyContainer.querySelectorAll(
-    `.${ARRAY_INPUT_CLASS}`
-  );
-  const currentProxies = Array.from(currentProxyInputs)
-    .map((input) => input.value)
-    .filter((proxy) => proxy.trim() !== "");
-
-  const combinedProxies = new Set([...currentProxies, ...extractedProxies]);
-  const uniqueProxies = Array.from(combinedProxies);
-
-  proxyContainer.innerHTML = ""; // Clear existing items
-
-  uniqueProxies.forEach((proxy) => {
-    addArrayItemWithValue("PROXIES", proxy);
-  });
-
-  closeModal(proxyModal);
-  showNotification(`添加/更新了 ${uniqueProxies.length} 个唯一代理`, "success");
-}
-
-/**
- * Handles the bulk deletion of proxies based on input from the modal.
- */
-function handleBulkDeleteProxies() {
-  const proxyContainer = document.getElementById("PROXIES_container");
-  if (!bulkDeleteProxyInput || !proxyContainer || !bulkDeleteProxyModal) return;
-
-  const bulkText = bulkDeleteProxyInput.value;
-  if (!bulkText.trim()) {
-    showNotification("请粘贴需要删除的代理地址", "warning");
-    return;
-  }
-
-  const proxiesToDelete = new Set(bulkText.match(PROXY_REGEX) || []);
-
-  if (proxiesToDelete.size === 0) {
-    showNotification("未在输入内容中提取到有效的代理地址格式", "warning");
-    return;
-  }
-
-  const proxyItems = proxyContainer.querySelectorAll(`.${ARRAY_ITEM_CLASS}`);
-  let deleteCount = 0;
-
-  proxyItems.forEach((item) => {
-    const input = item.querySelector(`.${ARRAY_INPUT_CLASS}`);
-    if (input && proxiesToDelete.has(input.value)) {
-      item.remove();
-      deleteCount++;
-    }
-  });
-
-  closeModal(bulkDeleteProxyModal);
-
-  if (deleteCount > 0) {
-    showNotification(`成功删除了 ${deleteCount} 个匹配的代理`, "success");
-  } else {
-    showNotification("列表中未找到您输入的任何代理进行删除", "info");
-  }
-  bulkDeleteProxyInput.value = "";
-}
-
-/**
  * Handles the bulk addition of Vertex Express API keys from the modal input.
  */
 function handleBulkAddVertexApiKeys() {
@@ -1563,42 +1134,22 @@ function switchTab(tabId) {
 }
 
 /**
- * Toggles the visibility of configuration sections for different upload providers.
- * @param {string} provider - The selected upload provider.
- */
-function toggleProviderConfig(provider) {
-  const providerConfigs = document.querySelectorAll(".provider-config");
-  providerConfigs.forEach((config) => {
-    if (config.getAttribute("data-provider") === provider) {
-      config.classList.add("active");
-    } else {
-      config.classList.remove("active");
-    }
-  });
-}
-
-/**
  * Creates and appends an input field for an array item.
  * @param {string} key - The configuration key for the array.
  * @param {string} value - The initial value for the input field.
  * @param {boolean} isSensitive - Whether the input is for sensitive data.
- * @param {string|null} modelId - Optional model ID for thinking models.
  * @returns {HTMLInputElement} The created input element.
  */
-function createArrayInput(key, value, isSensitive, modelId = null) {
+function createArrayInput(key, value, isSensitive) {
   const input = document.createElement("input");
   input.type = "text";
-  input.name = `${key}[]`; // Used for form submission if not handled by JS
+  input.name = `${key}[]`;
   input.value = value;
   let inputClasses = `${ARRAY_INPUT_CLASS} flex-grow px-3 py-2 border-none rounded-l-md focus:outline-none form-input-themed`;
   if (isSensitive) {
     inputClasses += ` ${SENSITIVE_INPUT_CLASS}`;
   }
   input.className = inputClasses;
-  if (modelId) {
-    input.setAttribute("data-model-id", modelId);
-    input.placeholder = "思考模型名称";
-  }
   return input;
 }
 
@@ -1633,45 +1184,6 @@ function createRemoveButton() {
 }
 
 /**
- * Creates a proxy status icon for displaying proxy check status.
- * @returns {HTMLSpanElement} The status icon element.
- */
-function createProxyStatusIcon() {
-  const statusIcon = document.createElement("span");
-  statusIcon.className = "proxy-status-icon px-2 py-2 text-gray-400";
-  statusIcon.innerHTML = '<i class="fas fa-question-circle" title="未检测"></i>';
-  statusIcon.setAttribute("data-status", "unknown");
-  return statusIcon;
-}
-
-/**
- * Creates a proxy check button for individual proxy checking.
- * @returns {HTMLButtonElement} The check button element.
- */
-function createProxyCheckButton() {
-  const checkBtn = document.createElement("button");
-  checkBtn.type = "button";
-  checkBtn.className =
-    "proxy-check-btn px-2 py-2 text-blue-500 hover:text-blue-700 focus:outline-none transition-colors duration-150 rounded-r-md";
-  checkBtn.innerHTML = '<i class="fas fa-globe"></i>';
-  checkBtn.title = "检测此代理";
-  
-  // 添加点击事件监听器
-  checkBtn.addEventListener("click", function(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    const inputElement = this.closest('.flex').querySelector('.array-input');
-    if (inputElement && inputElement.value.trim()) {
-      checkSingleProxy(inputElement.value.trim(), this);
-    } else {
-      showNotification("请先输入代理地址", "warning");
-    }
-  });
-  
-  return checkBtn;
-}
-
-/**
  * Adds a new item to an array configuration section (e.g., API_KEYS, ALLOWED_TOKENS).
  * This function is typically called by a "+" button.
  * @param {string} key - The configuration key for the array (e.g., 'API_KEYS').
@@ -1681,64 +1193,39 @@ function addArrayItem(key) {
   if (!container) return;
 
   const newItemValue = ""; // New items start empty
-  const modelId = addArrayItemWithValue(key, newItemValue); // This adds the DOM element
-
-  if (key === "THINKING_MODELS" && modelId) {
-    createAndAppendBudgetMapItem(newItemValue, -1, modelId); // Default budget -1
-  }
+  addArrayItemWithValue(key, newItemValue);
 }
 
 /**
  * Adds an array item with a specific value to the DOM.
  * This is used both for initially populating the form and for adding new items.
- * @param {string} key - The configuration key (e.g., 'API_KEYS', 'THINKING_MODELS').
+ * @param {string} key - The configuration key (e.g., 'API_KEYS').
  * @param {string} value - The value for the array item.
- * @returns {string|null} The generated modelId if it's a thinking model, otherwise null.
  */
 function addArrayItemWithValue(key, value) {
   const container = document.getElementById(`${key}_container`);
-  if (!container) return null;
+  if (!container) return;
 
-  const isThinkingModel = key === "THINKING_MODELS";
   const isAllowedToken = key === "ALLOWED_TOKENS";
-  const isVertexApiKey = key === "VERTEX_API_KEYS"; // 新增判断
-  const isProxy = key === "PROXIES"; // 新增代理判断
-  const isSensitive = key === "API_KEYS" || isAllowedToken || isVertexApiKey; // 更新敏感判断
-  const modelId = isThinkingModel ? generateUUID() : null;
+  const isVertexApiKey = key === "VERTEX_API_KEYS";
+  const isSensitive = key === "API_KEYS" || isAllowedToken || isVertexApiKey;
 
   const arrayItem = document.createElement("div");
   arrayItem.className = `${ARRAY_ITEM_CLASS} flex items-center mb-2 gap-2`;
-  if (isThinkingModel) {
-    arrayItem.setAttribute("data-model-id", modelId);
-  }
 
   const inputWrapper = document.createElement("div");
   inputWrapper.className =
     "flex items-center flex-grow rounded-md focus-within:border-blue-500 focus-within:ring focus-within:ring-blue-500 focus-within:ring-opacity-50";
-  // Apply light theme border directly via style
   inputWrapper.style.border = "1px solid rgba(0, 0, 0, 0.12)";
-  inputWrapper.style.backgroundColor = "transparent"; // Ensure wrapper is transparent
+  inputWrapper.style.backgroundColor = "transparent";
 
-  const input = createArrayInput(
-    key,
-    value,
-    isSensitive,
-    isThinkingModel ? modelId : null
-  );
+  const input = createArrayInput(key, value, isSensitive);
   inputWrapper.appendChild(input);
 
   if (isAllowedToken) {
     const generateBtn = createGenerateTokenButton();
     inputWrapper.appendChild(generateBtn);
-  } else if (isProxy) {
-    // 为代理添加状态显示和检测按钮
-    const proxyStatusIcon = createProxyStatusIcon();
-    inputWrapper.appendChild(proxyStatusIcon);
-    
-    const proxyCheckBtn = createProxyCheckButton();
-    inputWrapper.appendChild(proxyCheckBtn);
   } else {
-    // Ensure right-side rounding if no button is present
     input.classList.add("rounded-r-md");
   }
 
@@ -1748,7 +1235,6 @@ function addArrayItemWithValue(key, value) {
   arrayItem.appendChild(removeBtn);
   container.appendChild(arrayItem);
 
-  // Initialize sensitive field if applicable
   if (isSensitive && input.value) {
     if (configForm && typeof initializeSensitiveFields === "function") {
       const focusoutEvent = new Event("focusout", {
@@ -1758,78 +1244,6 @@ function addArrayItemWithValue(key, value) {
       input.dispatchEvent(focusoutEvent);
     }
   }
-  return isThinkingModel ? modelId : null;
-}
-
-/**
- * Creates and appends a DOM element for a thinking model's budget mapping.
- * @param {string} mapKey - The model name (key for the map).
- * @param {number|string} mapValue - The budget value.
- * @param {string} modelId - The unique ID of the corresponding thinking model.
- */
-function createAndAppendBudgetMapItem(mapKey, mapValue, modelId) {
-  const container = document.getElementById("THINKING_BUDGET_MAP_container");
-  if (!container) {
-    console.error(
-      "Cannot add budget item: THINKING_BUDGET_MAP_container not found!"
-    );
-    return;
-  }
-
-  // If container currently only has the placeholder, clear it
-  const placeholder = container.querySelector(".text-gray-500.italic");
-  // Check if the only child is the placeholder before clearing
-  if (
-    placeholder &&
-    container.children.length === 1 &&
-    container.firstChild === placeholder
-  ) {
-    container.innerHTML = "";
-  }
-
-  const mapItem = document.createElement("div");
-  mapItem.className = `${MAP_ITEM_CLASS} flex items-center mb-2 gap-2`;
-  mapItem.setAttribute("data-model-id", modelId);
-
-  const keyInput = document.createElement("input");
-  keyInput.type = "text";
-  keyInput.value = mapKey;
-  keyInput.placeholder = "模型名称 (自动关联)";
-  keyInput.readOnly = true;
-  keyInput.className = `${MAP_KEY_INPUT_CLASS} flex-grow px-3 py-2 border border-gray-300 rounded-md focus:outline-none bg-gray-100 text-gray-500`;
-  keyInput.setAttribute("data-model-id", modelId);
-
-  const valueInput = document.createElement("input");
-  valueInput.type = "number";
-  const intValue = parseInt(mapValue, 10);
-  valueInput.value = isNaN(intValue) ? -1 : intValue;
-  valueInput.placeholder = "预算 (整数)";
-  valueInput.className = `${MAP_VALUE_INPUT_CLASS} w-24 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:border-primary-500 focus:ring focus:ring-primary-200 focus:ring-opacity-50`;
-  valueInput.min = -1;
-  valueInput.max = 32767;
-  valueInput.addEventListener("input", function () {
-    let val = this.value.replace(/[^0-9-]/g, "");
-    if (val !== "") {
-      val = parseInt(val, 10);
-      if (val < -1) val = -1;
-      if (val > 32767) val = 32767;
-    }
-    this.value = val; // Corrected variable name
-  });
-
-  // Remove Button - Removed for budget map items
-  // const removeBtn = document.createElement('button');
-  // removeBtn.type = 'button';
-  // removeBtn.className = 'remove-btn text-gray-300 cursor-not-allowed focus:outline-none'; // Kept original class for reference
-  // removeBtn.innerHTML = '<i class="fas fa-trash-alt"></i>';
-  // removeBtn.title = '请从上方模型列表删除';
-  // removeBtn.disabled = true;
-
-  mapItem.appendChild(keyInput);
-  mapItem.appendChild(valueInput);
-  // mapItem.appendChild(removeBtn); // Do not append the remove button
-
-  container.appendChild(mapItem);
 }
 
 /**
@@ -1909,8 +1323,7 @@ function collectFormData() {
       element.name &&
       !element.name.includes("[]") &&
       !element.closest(".array-container") &&
-      !element.closest(`.${MAP_ITEM_CLASS}`) &&
-      !element.closest(`.${SAFETY_SETTING_ITEM_CLASS}`)
+      !element.closest(`.${MAP_ITEM_CLASS}`)
     ) {
       if (element.type === "number") {
         formData[element.name] = parseFloat(element.value);
@@ -1958,26 +1371,6 @@ function collectFormData() {
       ); // Ensure MASKED_VALUE is also filtered if not handled
   });
 
-  const budgetMapContainer = document.getElementById(
-    "THINKING_BUDGET_MAP_container"
-  );
-  if (budgetMapContainer) {
-    formData["THINKING_BUDGET_MAP"] = {};
-    const mapItems = budgetMapContainer.querySelectorAll(`.${MAP_ITEM_CLASS}`);
-    mapItems.forEach((item) => {
-      const keyInput = item.querySelector(`.${MAP_KEY_INPUT_CLASS}`);
-      const valueInput = item.querySelector(`.${MAP_VALUE_INPUT_CLASS}`);
-      if (keyInput && valueInput && keyInput.value.trim() !== "") {
-        const budgetValue = parseInt(valueInput.value, 10);
-        formData["THINKING_BUDGET_MAP"][keyInput.value.trim()] = isNaN(
-          budgetValue
-        )
-          ? -1
-          : budgetValue;
-      }
-    });
-  }
-
   const customHeadersContainer = document.getElementById(
     "CUSTOM_HEADERS_container"
   );
@@ -1994,28 +1387,6 @@ function collectFormData() {
       if (keyInput && valueInput && keyInput.value.trim() !== "") {
         formData["CUSTOM_HEADERS"][keyInput.value.trim()] =
           valueInput.value.trim();
-      }
-    });
-  }
-
-  if (safetySettingsContainer) {
-    formData["SAFETY_SETTINGS"] = [];
-    const settingItems = safetySettingsContainer.querySelectorAll(
-      `.${SAFETY_SETTING_ITEM_CLASS}`
-    );
-    settingItems.forEach((item) => {
-      const categorySelect = item.querySelector(".safety-category-select");
-      const thresholdSelect = item.querySelector(".safety-threshold-select");
-      if (
-        categorySelect &&
-        thresholdSelect &&
-        categorySelect.value &&
-        thresholdSelect.value
-      ) {
-        formData["SAFETY_SETTINGS"].push({
-          category: categorySelect.value,
-          threshold: thresholdSelect.value,
-        });
       }
     });
   }
@@ -2062,24 +1433,6 @@ function collectFormData() {
     );
   }
   // --- 结束：收集自动删除请求日志的配置 ---
-
-  // --- 新增：收集假流式配置 ---
-  const fakeStreamEnabledCheckbox = document.getElementById(
-    "FAKE_STREAM_ENABLED"
-  );
-  if (fakeStreamEnabledCheckbox) {
-    formData["FAKE_STREAM_ENABLED"] = fakeStreamEnabledCheckbox.checked;
-  }
-  const fakeStreamIntervalInput = document.getElementById(
-    "FAKE_STREAM_EMPTY_DATA_INTERVAL_SECONDS"
-  );
-  if (fakeStreamIntervalInput) {
-    formData["FAKE_STREAM_EMPTY_DATA_INTERVAL_SECONDS"] = parseInt(
-      fakeStreamIntervalInput.value,
-      10
-    );
-  }
-  // --- 结束：收集假流式配置 ---
 
   return formData;
 }
@@ -2317,85 +1670,6 @@ function generateRandomToken() {
   return result;
 }
 
-/**
- * Adds a new safety setting item to the DOM.
- * @param {string} [category=''] - The initial category for the setting.
- * @param {string} [threshold=''] - The initial threshold for the setting.
- */
-function addSafetySettingItem(category = "", threshold = "") {
-  const container = document.getElementById("SAFETY_SETTINGS_container");
-  if (!container) {
-    console.error(
-      "Cannot add safety setting: SAFETY_SETTINGS_container not found!"
-    );
-    return;
-  }
-
-  // 如果容器当前只有占位符，则清除它
-  const placeholder = container.querySelector(".text-gray-500.italic");
-  if (
-    placeholder &&
-    container.children.length === 1 &&
-    container.firstChild === placeholder
-  ) {
-    container.innerHTML = "";
-  }
-
-  const harmCategories = [
-    "HARM_CATEGORY_HARASSMENT",
-    "HARM_CATEGORY_HATE_SPEECH",
-    "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-    "HARM_CATEGORY_DANGEROUS_CONTENT",
-    "HARM_CATEGORY_CIVIC_INTEGRITY", // 根据需要添加或移除
-  ];
-  const harmThresholds = [
-    "BLOCK_NONE",
-    "BLOCK_LOW_AND_ABOVE",
-    "BLOCK_MEDIUM_AND_ABOVE",
-    "BLOCK_ONLY_HIGH",
-    "OFF", // 根据 Google API 文档添加或移除
-  ];
-
-  const settingItem = document.createElement("div");
-  settingItem.className = `${SAFETY_SETTING_ITEM_CLASS} flex items-center mb-2 gap-2`;
-
-  const categorySelect = document.createElement("select");
-  categorySelect.className =
-    "safety-category-select flex-grow px-3 py-2 rounded-md focus:outline-none focus:border-primary-500 focus:ring focus:ring-primary-200 focus:ring-opacity-50 form-select-themed";
-  harmCategories.forEach((cat) => {
-    const option = document.createElement("option");
-    option.value = cat;
-    option.textContent = cat.replace("HARM_CATEGORY_", "");
-    if (cat === category) option.selected = true;
-    categorySelect.appendChild(option);
-  });
-
-  const thresholdSelect = document.createElement("select");
-  thresholdSelect.className =
-    "safety-threshold-select w-48 px-3 py-2 rounded-md focus:outline-none focus:border-primary-500 focus:ring focus:ring-primary-200 focus:ring-opacity-50 form-select-themed";
-  harmThresholds.forEach((thr) => {
-    const option = document.createElement("option");
-    option.value = thr;
-    option.textContent = thr.replace("BLOCK_", "").replace("_AND_ABOVE", "+");
-    if (thr === threshold) option.selected = true;
-    thresholdSelect.appendChild(option);
-  });
-
-  const removeBtn = document.createElement("button");
-  removeBtn.type = "button";
-  removeBtn.className =
-    "remove-btn text-gray-400 hover:text-red-500 focus:outline-none transition-colors duration-150";
-  removeBtn.innerHTML = '<i class="fas fa-trash-alt"></i>';
-  removeBtn.title = "删除此设置";
-  // Event listener for removeBtn is now handled by event delegation in DOMContentLoaded
-
-  settingItem.appendChild(categorySelect);
-  settingItem.appendChild(thresholdSelect);
-  settingItem.appendChild(removeBtn);
-
-  container.appendChild(settingItem);
-}
-
 // --- Model Helper Functions ---
 async function fetchModels() {
   if (cachedModelsList) {
@@ -2517,14 +1791,10 @@ function handleModelSelection(selectedModelId) {
     currentModelHelperTarget.type === "array" &&
     currentModelHelperTarget.targetKey
   ) {
-    const modelId = addArrayItemWithValue(
+    addArrayItemWithValue(
       currentModelHelperTarget.targetKey,
       selectedModelId
     );
-    if (currentModelHelperTarget.targetKey === "THINKING_MODELS" && modelId) {
-      // Automatically add corresponding budget map item with default budget 0
-      createAndAppendBudgetMapItem(selectedModelId, -1, modelId);
-    }
   }
 
   if (modelHelperModal) closeModal(modelHelperModal);
@@ -2532,241 +1802,3 @@ function handleModelSelection(selectedModelId) {
 }
 
 // -- End Model Helper Functions --
-
-// -- Proxy Check Functions --
-
-/**
- * 检测单个代理是否可用
- * @param {string} proxy - 代理地址
- * @param {HTMLElement} buttonElement - 触发检测的按钮元素
- */
-async function checkSingleProxy(proxy, buttonElement) {
-  const statusIcon = buttonElement.parentElement.querySelector('.proxy-status-icon');
-  const originalButtonContent = buttonElement.innerHTML;
-  
-  try {
-    // 更新UI状态为检测中
-    buttonElement.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-    buttonElement.disabled = true;
-    if (statusIcon) {
-      statusIcon.className = "proxy-status-icon px-2 py-2 text-blue-500";
-      statusIcon.innerHTML = '<i class="fas fa-spinner fa-spin" title="检测中..."></i>';
-      statusIcon.setAttribute("data-status", "checking");
-    }
-    
-    const response = await fetch('/api/config/proxy/check', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        proxy: proxy,
-        use_cache: true
-      })
-    });
-    
-    if (!response.ok) {
-      throw new Error(`检测请求失败: ${response.status}`);
-    }
-    
-    const result = await response.json();
-    updateProxyStatus(statusIcon, result);
-    
-    // 显示检测结果通知
-    if (result.is_available) {
-      showNotification(`代理可用 (${result.response_time}s)`, "success");
-    } else {
-      showNotification(`代理不可用: ${result.error_message}`, "error");
-    }
-    
-  } catch (error) {
-    console.error('代理检测失败:', error);
-    if (statusIcon) {
-      statusIcon.className = "proxy-status-icon px-2 py-2 text-red-500";
-      statusIcon.innerHTML = '<i class="fas fa-times-circle" title="检测失败"></i>';
-      statusIcon.setAttribute("data-status", "error");
-    }
-    showNotification(`检测失败: ${error.message}`, "error");
-  } finally {
-    // 恢复按钮状态
-    buttonElement.innerHTML = originalButtonContent;
-    buttonElement.disabled = false;
-  }
-}
-
-/**
- * 更新代理状态图标
- * @param {HTMLElement} statusIcon - 状态图标元素
- * @param {Object} result - 检测结果
- */
-function updateProxyStatus(statusIcon, result) {
-  if (!statusIcon) return;
-  
-  if (result.is_available) {
-    statusIcon.className = "proxy-status-icon px-2 py-2 text-green-500";
-    statusIcon.innerHTML = `<i class="fas fa-check-circle" title="可用 (${result.response_time}s)"></i>`;
-    statusIcon.setAttribute("data-status", "available");
-  } else {
-    statusIcon.className = "proxy-status-icon px-2 py-2 text-red-500";
-    statusIcon.innerHTML = `<i class="fas fa-times-circle" title="不可用: ${result.error_message}"></i>`;
-    statusIcon.setAttribute("data-status", "unavailable");
-  }
-}
-
-/**
- * 检测所有代理
- */
-async function checkAllProxies() {
-  const proxyContainer = document.getElementById("PROXIES_container");
-  if (!proxyContainer) return;
-  
-  const proxyInputs = proxyContainer.querySelectorAll('.array-input');
-  const proxies = Array.from(proxyInputs)
-    .map(input => input.value.trim())
-    .filter(proxy => proxy.length > 0);
-  
-  if (proxies.length === 0) {
-    showNotification("没有代理需要检测", "warning");
-    return;
-  }
-  
-  // 打开检测结果模态框
-  const proxyCheckModal = document.getElementById("proxyCheckModal");
-  if (proxyCheckModal) {
-    openModal(proxyCheckModal);
-    
-    // 显示进度
-    const progressContainer = document.getElementById("proxyCheckProgress");
-    const summaryContainer = document.getElementById("proxyCheckSummary");
-    const resultsContainer = document.getElementById("proxyCheckResults");
-    
-    if (progressContainer) progressContainer.classList.remove("hidden");
-    if (summaryContainer) summaryContainer.classList.add("hidden");
-    if (resultsContainer) resultsContainer.innerHTML = "";
-    
-    // 更新总数
-    const totalCountElement = document.getElementById("totalCount");
-    if (totalCountElement) totalCountElement.textContent = proxies.length;
-    
-    try {
-      const response = await fetch('/api/config/proxy/check-all', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          proxies: proxies,
-          use_cache: true,
-          max_concurrent: 5
-        })
-      });
-      
-      if (!response.ok) {
-        throw new Error(`批量检测请求失败: ${response.status}`);
-      }
-      
-      const results = await response.json();
-      displayProxyCheckResults(results);
-      updateProxyStatusInList(results);
-      
-    } catch (error) {
-      console.error('批量代理检测失败:', error);
-      showNotification(`批量检测失败: ${error.message}`, "error");
-      if (resultsContainer) {
-        resultsContainer.innerHTML = `<div class="text-red-500 text-center py-4">检测失败: ${error.message}</div>`;
-      }
-    } finally {
-      // 隐藏进度
-      if (progressContainer) progressContainer.classList.add("hidden");
-    }
-  }
-}
-
-/**
- * 显示代理检测结果
- * @param {Array} results - 检测结果数组
- */
-function displayProxyCheckResults(results) {
-  const summaryContainer = document.getElementById("proxyCheckSummary");
-  const resultsContainer = document.getElementById("proxyCheckResults");
-  const availableCountElement = document.getElementById("availableCount");
-  const unavailableCountElement = document.getElementById("unavailableCount");
-  const retryButton = document.getElementById("retryFailedProxiesBtn");
-  
-  if (!resultsContainer) return;
-  
-  // 统计结果
-  const availableCount = results.filter(r => r.is_available).length;
-  const unavailableCount = results.length - availableCount;
-  
-  // 更新概览
-  if (availableCountElement) availableCountElement.textContent = availableCount;
-  if (unavailableCountElement) unavailableCountElement.textContent = unavailableCount;
-  if (summaryContainer) summaryContainer.classList.remove("hidden");
-  
-  // 显示重试按钮（如果有失败的代理）
-  if (retryButton) {
-    if (unavailableCount > 0) {
-      retryButton.classList.remove("hidden");
-    } else {
-      retryButton.classList.add("hidden");
-    }
-  }
-  
-  // 清空并填充结果
-  resultsContainer.innerHTML = "";
-  
-  results.forEach(result => {
-    const resultItem = document.createElement("div");
-    resultItem.className = `flex items-center justify-between p-3 border rounded-lg ${
-      result.is_available ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'
-    }`;
-    
-    const statusIcon = result.is_available ? 
-      '<i class="fas fa-check-circle text-green-500"></i>' : 
-      '<i class="fas fa-times-circle text-red-500"></i>';
-    
-    const responseTimeText = result.response_time ? 
-      ` (${result.response_time}s)` : '';
-    
-    const errorText = result.error_message ? 
-      `<span class="text-red-600 text-sm ml-2">${result.error_message}</span>` : '';
-    
-    resultItem.innerHTML = `
-      <div class="flex items-center gap-3">
-        ${statusIcon}
-        <span class="font-mono text-sm">${result.proxy}</span>
-        ${responseTimeText}
-      </div>
-      <div class="flex items-center">
-        <span class="text-sm ${result.is_available ? 'text-green-700' : 'text-red-700'}">
-          ${result.is_available ? '可用' : '不可用'}
-        </span>
-        ${errorText}
-      </div>
-    `;
-    
-    resultsContainer.appendChild(resultItem);
-  });
-}
-
-/**
- * 根据检测结果更新代理列表中的状态图标
- * @param {Array} results - 检测结果数组
- */
-function updateProxyStatusInList(results) {
-  const proxyContainer = document.getElementById("PROXIES_container");
-  if (!proxyContainer) return;
-  
-  results.forEach(result => {
-    const proxyInputs = proxyContainer.querySelectorAll('.array-input');
-    proxyInputs.forEach(input => {
-      if (input.value.trim() === result.proxy) {
-        const statusIcon = input.parentElement.querySelector('.proxy-status-icon');
-        updateProxyStatus(statusIcon, result);
-      }
-    });
-  });
-}
-
-// -- End Proxy Check Functions --

@@ -1,6 +1,5 @@
 # app/services/chat/api_client.py
 
-import random
 from abc import ABC, abstractmethod
 from typing import Any, AsyncGenerator, Dict, Optional
 
@@ -58,16 +57,8 @@ class GeminiApiClient(ApiClient):
         """获取可用的 Gemini 模型列表"""
         timeout = httpx.Timeout(timeout=5)
 
-        proxy_to_use = None
-        if settings.PROXIES:
-            if settings.PROXIES_USE_CONSISTENCY_HASH_BY_API_KEY:
-                proxy_to_use = settings.PROXIES[hash(api_key) % len(settings.PROXIES)]
-            else:
-                proxy_to_use = random.choice(settings.PROXIES)
-            logger.info(f"Using proxy for getting models: {proxy_to_use}")
-
         headers = self._prepare_headers()
-        async with httpx.AsyncClient(timeout=timeout, proxy=proxy_to_use) as client:
+        async with httpx.AsyncClient(timeout=timeout) as client:
             url = f"{self.base_url}/models?key={api_key}&pageSize=1000"
             try:
                 response = await client.get(url, headers=headers)
@@ -87,17 +78,9 @@ class GeminiApiClient(ApiClient):
         timeout = httpx.Timeout(self.timeout, read=self.timeout)
         model = self._get_real_model(model)
 
-        proxy_to_use = None
-        if settings.PROXIES:
-            if settings.PROXIES_USE_CONSISTENCY_HASH_BY_API_KEY:
-                proxy_to_use = settings.PROXIES[hash(api_key) % len(settings.PROXIES)]
-            else:
-                proxy_to_use = random.choice(settings.PROXIES)
-            logger.info(f"Using proxy for getting models: {proxy_to_use}")
-
         headers = self._prepare_headers()
 
-        async with httpx.AsyncClient(timeout=timeout, proxy=proxy_to_use) as client:
+        async with httpx.AsyncClient(timeout=timeout) as client:
             url = f"{self.base_url}/models/{model}:generateContent?key={api_key}"
             response = await client.post(url, json=payload, headers=headers)
 
@@ -121,16 +104,8 @@ class GeminiApiClient(ApiClient):
         timeout = httpx.Timeout(self.timeout, read=self.timeout)
         model = self._get_real_model(model)
 
-        proxy_to_use = None
-        if settings.PROXIES:
-            if settings.PROXIES_USE_CONSISTENCY_HASH_BY_API_KEY:
-                proxy_to_use = settings.PROXIES[hash(api_key) % len(settings.PROXIES)]
-            else:
-                proxy_to_use = random.choice(settings.PROXIES)
-            logger.info(f"Using proxy for getting models: {proxy_to_use}")
-
         headers = self._prepare_headers()
-        async with httpx.AsyncClient(timeout=timeout, proxy=proxy_to_use) as client:
+        async with httpx.AsyncClient(timeout=timeout) as client:
             url = f"{self.base_url}/models/{model}:streamGenerateContent?alt=sse&key={api_key}"
             async with client.stream(
                 method="POST", url=url, json=payload, headers=headers
@@ -148,16 +123,8 @@ class GeminiApiClient(ApiClient):
         timeout = httpx.Timeout(self.timeout, read=self.timeout)
         model = self._get_real_model(model)
 
-        proxy_to_use = None
-        if settings.PROXIES:
-            if settings.PROXIES_USE_CONSISTENCY_HASH_BY_API_KEY:
-                proxy_to_use = settings.PROXIES[hash(api_key) % len(settings.PROXIES)]
-            else:
-                proxy_to_use = random.choice(settings.PROXIES)
-            logger.info(f"Using proxy for counting tokens: {proxy_to_use}")
-
         headers = self._prepare_headers()
-        async with httpx.AsyncClient(timeout=timeout, proxy=proxy_to_use) as client:
+        async with httpx.AsyncClient(timeout=timeout) as client:
             url = f"{self.base_url}/models/{model}:countTokens?key={api_key}"
             response = await client.post(url, json=payload, headers=headers)
             if response.status_code != 200:
@@ -172,16 +139,8 @@ class GeminiApiClient(ApiClient):
         timeout = httpx.Timeout(self.timeout, read=self.timeout)
         model = self._get_real_model(model)
 
-        proxy_to_use = None
-        if settings.PROXIES:
-            if settings.PROXIES_USE_CONSISTENCY_HASH_BY_API_KEY:
-                proxy_to_use = settings.PROXIES[hash(api_key) % len(settings.PROXIES)]
-            else:
-                proxy_to_use = random.choice(settings.PROXIES)
-            logger.info(f"Using proxy for embedding: {proxy_to_use}")
-
         headers = self._prepare_headers()
-        async with httpx.AsyncClient(timeout=timeout, proxy=proxy_to_use) as client:
+        async with httpx.AsyncClient(timeout=timeout) as client:
             url = f"{self.base_url}/models/{model}:embedContent?key={api_key}"
             response = await client.post(url, json=payload, headers=headers)
             if response.status_code != 200:
@@ -199,16 +158,8 @@ class GeminiApiClient(ApiClient):
         timeout = httpx.Timeout(self.timeout, read=self.timeout)
         model = self._get_real_model(model)
 
-        proxy_to_use = None
-        if settings.PROXIES:
-            if settings.PROXIES_USE_CONSISTENCY_HASH_BY_API_KEY:
-                proxy_to_use = settings.PROXIES[hash(api_key) % len(settings.PROXIES)]
-            else:
-                proxy_to_use = random.choice(settings.PROXIES)
-            logger.info(f"Using proxy for batch embedding: {proxy_to_use}")
-
         headers = self._prepare_headers()
-        async with httpx.AsyncClient(timeout=timeout, proxy=proxy_to_use) as client:
+        async with httpx.AsyncClient(timeout=timeout) as client:
             url = f"{self.base_url}/models/{model}:batchEmbedContents?key={api_key}"
             response = await client.post(url, json=payload, headers=headers)
             if response.status_code != 200:

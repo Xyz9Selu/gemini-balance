@@ -18,15 +18,6 @@ class ModelService:
             return None
 
         try:
-            filtered_models_list = []
-            for model in gemini_models.get("models", []):
-                model_id = model["name"].split("/")[-1]
-                if model_id not in settings.FILTERED_MODELS:
-                    filtered_models_list.append(model)
-                else:
-                    logger.debug(f"Filtered out model: {model_id}")
-
-            gemini_models["models"] = filtered_models_list
             return gemini_models
         except Exception as e:
             logger.error(f"处理模型列表时出错: {e}")
@@ -58,35 +49,9 @@ class ModelService:
             }
             openai_format["data"].append(openai_model)
 
-            if model_id in settings.SEARCH_MODELS:
-                search_model = openai_model.copy()
-                search_model["id"] = f"{model_id}-search"
-                openai_format["data"].append(search_model)
-            if model_id in settings.IMAGE_MODELS:
-                image_model = openai_model.copy()
-                image_model["id"] = f"{model_id}-image"
-                openai_format["data"].append(image_model)
-            if model_id in settings.THINKING_MODELS:
-                non_thinking_model = openai_model.copy()
-                non_thinking_model["id"] = f"{model_id}-non-thinking"
-                openai_format["data"].append(non_thinking_model)
-
-        if settings.CREATE_IMAGE_MODEL:
-            image_model = openai_model.copy()
-            image_model["id"] = f"{settings.CREATE_IMAGE_MODEL}-chat"
-            openai_format["data"].append(image_model)
         return openai_format
 
     async def check_model_support(self, model: str) -> bool:
         if not model or not isinstance(model, str):
             return False
-
-        model = model.strip()
-        if model.endswith("-search"):
-            model = model[:-7]
-            return model in settings.SEARCH_MODELS
-        if model.endswith("-image"):
-            model = model[:-6]
-            return model in settings.IMAGE_MODELS
-
-        return model not in settings.FILTERED_MODELS
+        return bool(model.strip())

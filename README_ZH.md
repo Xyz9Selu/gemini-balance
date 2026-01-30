@@ -55,11 +55,6 @@ app/
 *   **双协议 API 兼容**: 同时支持 Gemini 和 OpenAI 格式的 CHAT API 请求转发。
     *   OpenAI Base URL: `http://localhost:8000(/hf)/v1`
     *   Gemini Base URL: `http://localhost:8000(/gemini)/v1beta`
-*   **图文对话与修图**: 通过 `IMAGE_MODELS` 配置支持图文对话和修图功能的模型，调用时使用 `配置模型-image` 模型名。
-    ![对话生图](files/image6.png)
-    ![修改图片](files/image7.png)
-*   **联网搜索**: 通过 `SEARCH_MODELS` 配置支持联网搜索的模型，调用时使用 `配置模型-search` 模型名。
-    ![联网搜索](files/image8.png)
 *   **Key 状态监控**: 提供 `/keys_status` 页面（需要认证），实时查看各 Key 的状态和使用情况。
     ![监控面板](files/image.png)
 *   **详细日志记录**: 提供详细的错误日志，方便排查问题。
@@ -73,7 +68,6 @@ app/
     *   **Embeddings 接口**: 完美适配 OpenAI 格式的 `embeddings` 接口。
     *   **画图接口**: 将 `imagen-3.0-generate-002` 模型接口改造为 OpenAI 画图接口格式。
 *   **模型列表自动维护**: 自动获取并同步 Gemini 和 OpenAI 的最新模型列表，兼容 New API。
-*   **代理支持**: 支持配置 HTTP/SOCKS5 代理 (`PROXIES`)，方便在特殊网络环境下使用。
 *   **Docker 支持**: 提供 AMD 和 ARM 架构的 Docker 镜像，方便快速部署。
     *   镜像地址: `ghcr.io/snailyp/gemini-balance:latest`
 
@@ -148,7 +142,7 @@ app/
 
 #### 兼容 huggingface (HF) 格式
 
-如果您需要使用高级功能（例如假流式输出），请使用此端点。
+如果您需要使用高级功能，请使用此端点。
 
 *   `GET /hf/v1/models`: 列出模型。
 *   `POST /hf/v1/chat/completions`: 聊天补全。
@@ -185,24 +179,12 @@ app/
 | `ALLOWED_TOKENS` | **必填**, 允许访问的 Token 列表 | `[]` |
 | `AUTH_TOKEN` | 超级管理员 Token，不填则使用 `ALLOWED_TOKENS` 的第一个 | `sk-123456` |
 | `TEST_MODEL` | 用于测试密钥可用性的模型 | `gemini-2.5-flash-lite` |
-| `IMAGE_MODELS` | 支持绘图功能的模型列表 | `["gemini-2.0-flash-exp", "gemini-2.5-flash-image-preview"]` |
-| `SEARCH_MODELS` | 支持搜索功能的模型列表 | `["gemini-2.5-flash","gemini-2.5-pro"]` |
-| `FILTERED_MODELS` | 被禁用的模型列表 | `[]` |
-| `TOOLS_CODE_EXECUTION_ENABLED` | 是否启用代码执行工具 | `false` |
-| `SHOW_SEARCH_LINK` | 是否在响应中显示搜索结果链接 | `true` |
-| `SHOW_THINKING_PROCESS` | 是否显示模型思考过程 | `true` |
-| `THINKING_MODELS` | 支持思考功能的模型列表 | `[]` |
-| `THINKING_BUDGET_MAP` | 思考功能预算映射 (模型名:预算值) | `{}` |
-| `URL_NORMALIZATION_ENABLED` | 是否启用智能路由映射功能 | `false` |
-| `URL_CONTEXT_ENABLED` | 是否启用URL上下文理解功能 | `false` |
-| `URL_CONTEXT_MODELS` | 支持URL上下文理解功能的模型列表 | `[]` |
 | `BASE_URL` | Gemini API 基础 URL | `https://generativelanguage.googleapis.com/v1beta` |
 | `MAX_FAILURES` | 单个 Key 允许的最大失败次数 | `3` |
 | `MAX_RETRIES` | API 请求失败时的最大重试次数 | `3` |
 | `CHECK_INTERVAL_HOURS` | 禁用 Key 恢复检查间隔 (小时) | `1` |
 | `TIMEZONE` | 应用程序使用的时区 | `Asia/Shanghai` |
 | `TIME_OUT` | 请求超时时间 (秒) | `300` |
-| `PROXIES` | 代理服务器列表 (例如 `http://user:pass@host:port`) | `[]` |
 | **日志与安全** | | |
 | `LOG_LEVEL` | 日志级别: `DEBUG`, `INFO`, `WARNING`, `ERROR` | `INFO` |
 | `ERROR_LOG_RECORD_REQUEST_BODY` | 是否记录错误日志的请求体（可能包含敏感信息） | `false` |
@@ -210,38 +192,6 @@ app/
 | `AUTO_DELETE_ERROR_LOGS_DAYS` | 错误日志保留天数 | `7` |
 | `AUTO_DELETE_REQUEST_LOGS_ENABLED`| 是否自动删除请求日志 | `false` |
 | `AUTO_DELETE_REQUEST_LOGS_DAYS` | 请求日志保留天数 | `30` |
-| `SAFETY_SETTINGS` | 内容安全阈值 (JSON 字符串) | `[{"category": "HARM_CATEGORY_HARASSMENT", "threshold": "OFF"}, ...]` |
-| **TTS 相关** | | |
-| `TTS_MODEL` | TTS 模型名称 | `gemini-2.5-flash-preview-tts` |
-| `TTS_VOICE_NAME` | TTS 语音名称 | `Zephyr` |
-| `TTS_SPEED` | TTS 语速 | `normal` |
-| **图像生成相关** | | |
-| `PAID_KEY` | 付费版API Key，用于图片生成等高级功能 | `your-paid-api-key` |
-| `CREATE_IMAGE_MODEL` | 图片生成模型 | `imagen-3.0-generate-002` |
-| `UPLOAD_PROVIDER` | 图片上传提供商: `smms`, `picgo`, `cloudflare_imgbed`, `aliyun_oss` | `smms` |
-| `OSS_ENDPOINT` | 阿里云 OSS 公网 Endpoint | `oss-cn-shanghai.aliyuncs.com` |
-| `OSS_ENDPOINT_INNER` | 阿里云 OSS 内网 Endpoint（同 VPC 内网访问） | `oss-cn-shanghai-internal.aliyuncs.com` |
-| `OSS_ACCESS_KEY` | 阿里云 AccessKey ID | `LTAI5txxxxxxxxxxxxxxxx` |
-| `OSS_ACCESS_KEY_SECRET` | 阿里云 AccessKey Secret | `yXxxxxxxxxxxxxxxxxxxxxx` |
-| `OSS_BUCKET_NAME` | 阿里云 OSS Bucket 名称 | `your-bucket-name` |
-| `OSS_REGION` | 阿里云 OSS 区域 Region | `cn-shanghai` |
-| `SMMS_SECRET_TOKEN` | SM.MS图床的API Token | `your-smms-token` |
-| `PICGO_API_KEY` | [PicoGo](https://www.picgo.net/)图床的API Key | `your-picogo-apikey` |
-| `PICGO_API_URL` | [PicoGo](https://www.picgo.net/)图床的API服务器地址 | `https://www.picgo.net/api/1/upload` |
-| `CLOUDFLARE_IMGBED_URL` | [CloudFlare](https://github.com/MarSeventh/CloudFlare-ImgBed) 图床上传地址 | `https://xxxxxxx.pages.dev/upload` |
-| `CLOUDFLARE_IMGBED_AUTH_CODE`| CloudFlare图床的鉴权key | `your-cloudflare-imgber-auth-code` |
-| `CLOUDFLARE_IMGBED_UPLOAD_FOLDER`| CloudFlare图床的上传文件夹路径 | `""` |
-| **流式优化器相关** | | |
-| `STREAM_OPTIMIZER_ENABLED` | 是否启用流式输出优化 | `false` |
-| `STREAM_MIN_DELAY` | 流式输出最小延迟 | `0.016` |
-| `STREAM_MAX_DELAY` | 流式输出最大延迟 | `0.024` |
-| `STREAM_SHORT_TEXT_THRESHOLD`| 短文本阈值 | `10` |
-| `STREAM_LONG_TEXT_THRESHOLD` | 长文本阈值 | `50` |
-| `STREAM_CHUNK_SIZE` | 流式输出块大小 | `5` |
-| **伪流式 (Fake Stream) 相关** | | |
-| `FAKE_STREAM_ENABLED` | 是否启用伪流式传输 | `false` |
-| `FAKE_STREAM_EMPTY_DATA_INTERVAL_SECONDS` | 伪流式传输时发送心跳空数据的间隔秒数 | `5` |
-
 </details>
 
 ---

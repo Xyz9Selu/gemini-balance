@@ -14,7 +14,6 @@ from app.middleware.middleware import setup_middlewares
 from app.router.routes import setup_routers
 from app.scheduler.scheduled_tasks import start_scheduler, stop_scheduler
 from app.service.key.key_manager import get_key_manager_instance
-from app.service.update.update_service import check_for_updates
 from app.utils.helpers import get_current_version
 
 logger = get_application_logger()
@@ -25,15 +24,6 @@ TEMPLATES_DIR = PROJECT_ROOT / "app" / "templates"
 
 # 初始化模板引擎，并添加全局变量
 templates = Jinja2Templates(directory="app/templates")
-
-
-# 定义一个函数来更新模板全局变量
-def update_template_globals(app: FastAPI, update_info: dict):
-    # Jinja2Templates 实例没有直接更新全局变量的方法
-    # 我们需要在请求上下文中传递这些变量，或者修改 Jinja 环境
-    # 更简单的方法是将其存储在 app.state 中，并在渲染时传递
-    app.state.update_info = update_info
-    logger.info(f"Update info stored in app.state: {update_info}")
 
 
 # --- Helper functions for lifespan ---
@@ -66,24 +56,6 @@ def _stop_scheduler():
     stop_scheduler()
 
 
-async def _perform_update_check(app: FastAPI):
-    """Checks for updates and stores the info in app.state."""
-    update_available, latest_version, error_message = await check_for_updates()
-    current_version = get_current_version()
-    update_info = {
-        "update_available": update_available,
-        "latest_version": latest_version,
-        "error_message": error_message,
-        "current_version": current_version,
-    }
-    if not hasattr(app, "state"):
-        from starlette.datastructures import State
-
-        app.state = State()
-    app.state.update_info = update_info
-    logger.info(f"Update check completed. Info: {update_info}")
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -95,7 +67,6 @@ async def lifespan(app: FastAPI):
     logger.info("Application starting up...")
     try:
         await _setup_database_and_config(settings)
-        await _perform_update_check(app)
         _start_scheduler()
 
     except Exception as e:
@@ -126,17 +97,6 @@ def create_app() -> FastAPI:
         version=current_version,
         lifespan=lifespan,
     )
-
-    if not hasattr(app, "state"):
-        from starlette.datastructures import State
-
-        app.state = State()
-    app.state.update_info = {
-        "update_available": False,
-        "latest_version": None,
-        "error_message": "Initializing...",
-        "current_version": current_version,
-    }
 
     # 配置静态文件
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")

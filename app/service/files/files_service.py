@@ -2,6 +2,7 @@
 文件管理服务
 """
 import json
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any, Tuple
 from httpx import AsyncClient
@@ -15,9 +16,15 @@ from fastapi import HTTPException
 from app.log.logger import get_files_logger
 from app.utils.helpers import redact_key_for_logging
 from app.service.client.api_client import GeminiApiClient
+from app.service.files.local_file_service import (
+    delete_local_file,
+    get_local_file_metadata,
+)
 from app.service.key.key_manager import get_key_manager_instance
 
 logger = get_files_logger()
+
+LOCAL_FILE_PREFIX = "files/local/"
 
 # 全局上傳會話存儲
 _upload_sessions: Dict[str, Dict[str, Any]] = {}
@@ -59,6 +66,34 @@ class FilesService:
             Tuple[Dict[str, Any], Dict[str, str]]: (响应体, 响应头)
         """
         try:
+            # 本地文件上传：不调用 Google，只创建本地会话，返回代理 URL
+            if settings.ENABLE_LOCAL_FILE_UPLOAD:
+                display_name = ""
+                if body:
+                    try:
+                        request_data = json.loads(body)
+                        display_name = request_data.get("displayName", "")
+                    except Exception:
+                        pass
+                upload_id = uuid.uuid4().hex
+                async with _upload_sessions_lock:
+                    _upload_sessions[upload_id] = {
+                        "local": True,
+                        "user_token": user_token,
+                        "display_name": display_name,
+                        "mime_type": headers.get("x-goog-upload-header-content-type", "application/octet-stream"),
+                        "size_bytes": int(headers.get("x-goog-upload-header-content-length", "0") or "0"),
+                        "created_at": datetime.now(timezone.utc),
+                        "chunks": [],
+                    }
+                asyncio.create_task(self._cleanup_expired_sessions())
+                proxy_upload_url = f"{request_host.rstrip('/')}/upload/v1beta/files?key={user_token}&upload_id={upload_id}&upload_protocol=resumable" if request_host else f"/upload/v1beta/files?key={user_token}&upload_id={upload_id}&upload_protocol=resumable"
+                logger.info(f"Local upload session created: upload_id={upload_id}")
+                return {}, {
+                    "X-Goog-Upload-URL": proxy_upload_url,
+                    "X-Goog-Upload-Status": "active"
+                }
+
             # 获取可用的 API key
             key_manager = await self._get_key_manager()
             api_key = await key_manager.get_next_key()
@@ -220,20 +255,45 @@ class FilesService:
             
             logger.debug(f"No session found for key: {redact_key_for_logging(key)}")
             return None
+
+    async def remove_upload_session(self, upload_id: str) -> None:
+        """移除上傳會話（本地上傳完成後調用）"""
+        async with _upload_sessions_lock:
+            _upload_sessions.pop(upload_id, None)
     
     async def get_file(self, file_name: str, user_token: str) -> FileMetadata:
         """
         获取文件信息
         
         Args:
-            file_name: 文件名称 (格式: files/{file_id})
+            file_name: 文件名称 (格式: files/{file_id} 或 files/local/{id})
             user_token: 用户令牌
             
         Returns:
             FileMetadata: 文件元数据
         """
         try:
-            # 查询文件记录
+            # 本地文件：從本地元數據返回 Gemini 形狀
+            if file_name.startswith(LOCAL_FILE_PREFIX):
+                meta = await get_local_file_metadata(file_name)
+                if not meta:
+                    raise HTTPException(status_code=404, detail="File not found or expired")
+                now_iso = meta["created_at"].isoformat().replace("+00:00", "Z")
+                exp_iso = meta["expires_at"].isoformat().replace("+00:00", "Z")
+                return FileMetadata(
+                    name=f"files/local/{meta['id']}",
+                    displayName=meta.get("display_name"),
+                    mimeType=meta["mime_type"],
+                    sizeBytes=str(meta["size_bytes"]),
+                    createTime=now_iso,
+                    updateTime=now_iso,
+                    expirationTime=exp_iso,
+                    sha256Hash=None,
+                    uri=f"{settings.BASE_URL}/files/local/{meta['id']}",
+                    state="ACTIVE",
+                )
+
+            # 查询文件记录 (Gemini 文件)
             file_record = await db_services.get_file_record_by_name(file_name)
             
             if not file_record:
@@ -307,7 +367,7 @@ class FilesService:
         user_token: Optional[str] = None
     ) -> ListFilesResponse:
         """
-        列出文件
+        列出文件（含 Gemini 文件與本地文件）
         
         Args:
             page_size: 每页大小
@@ -320,34 +380,60 @@ class FilesService:
         try:
             logger.debug(f"list_files called with page_size={page_size}, page_token={page_token}")
             
-            # 从数据库获取文件列表
+            # 从数据库获取 Gemini 文件列表
             files, next_page_token = await db_services.list_file_records(
                 user_token=user_token,
                 page_size=page_size,
                 page_token=page_token
             )
             
+            # 合併本地文件（未過期）
+            local_rows, local_next = await db_services.list_local_file_records(
+                page_size=page_size,
+                page_token=page_token,
+            )
+            for rec in local_rows:
+                name = f"files/local/{rec['id']}"
+                now_iso = rec["created_at"].isoformat().replace("+00:00", "Z")
+                exp_iso = rec["expires_at"].isoformat().replace("+00:00", "Z")
+                files.append({
+                    "name": name,
+                    "display_name": rec.get("display_name"),
+                    "mime_type": rec["mime_type"],
+                    "size_bytes": rec["size_bytes"],
+                    "create_time": rec["created_at"],
+                    "update_time": rec["created_at"],
+                    "expiration_time": rec["expires_at"],
+                    "sha256_hash": None,
+                    "uri": f"{settings.BASE_URL}/{name}",
+                    "state": "ACTIVE",
+                })
+            
             logger.debug(f"Database returned {len(files)} files, next_page_token={next_page_token}")
             
             # 转换为响应格式
             file_list = []
             for file_record in files:
+                name = file_record.get("name") or f"files/local/{file_record.get('id', '')}"
+                create_time = file_record.get("create_time") or file_record.get("created_at")
+                update_time = file_record.get("update_time") or create_time
+                expiration_time = file_record.get("expiration_time") or file_record.get("expires_at")
                 file_list.append(FileMetadata(
-                    name=file_record["name"],
+                    name=name,
                     displayName=file_record.get("display_name"),
-                    mimeType=file_record["mime_type"],
-                    sizeBytes=str(file_record["size_bytes"]),
-                    createTime=file_record["create_time"].isoformat() + "Z",
-                    updateTime=file_record["update_time"].isoformat() + "Z",
-                    expirationTime=file_record["expiration_time"].isoformat() + "Z",
+                    mimeType=file_record.get("mime_type", "application/octet-stream"),
+                    sizeBytes=str(file_record.get("size_bytes", 0)),
+                    createTime=(create_time.isoformat() + "Z") if create_time else "",
+                    updateTime=(update_time.isoformat() + "Z") if update_time else "",
+                    expirationTime=(expiration_time.isoformat() + "Z") if expiration_time else "",
                     sha256Hash=file_record.get("sha256_hash"),
-                    uri=file_record["uri"],
-                    state=file_record["state"].value if file_record.get("state") else "ACTIVE"
+                    uri=file_record.get("uri", f"{settings.BASE_URL}/{name}"),
+                    state=file_record.get("state", "ACTIVE") if isinstance(file_record.get("state"), str) else (file_record.get("state").value if file_record.get("state") else "ACTIVE")
                 ))
             
             response = ListFilesResponse(
                 files=file_list,
-                nextPageToken=next_page_token
+                nextPageToken=next_page_token or local_next
             )
             
             logger.debug(f"Returning response with {len(response.files)} files, nextPageToken={response.nextPageToken}")
@@ -363,14 +449,18 @@ class FilesService:
         删除文件
         
         Args:
-            file_name: 文件名称
+            file_name: 文件名称 (含 files/local/{id})
             user_token: 用户令牌
             
         Returns:
             bool: 是否删除成功
         """
         try:
-            # 查询文件记录
+            # 本地文件：從磁盤與 DB 刪除
+            if file_name.startswith(LOCAL_FILE_PREFIX):
+                return await delete_local_file(file_name)
+
+            # 查询文件记录 (Gemini 文件)
             file_record = await db_services.get_file_record_by_name(file_name)
             
             if not file_record:

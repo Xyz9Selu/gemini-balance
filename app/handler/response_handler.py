@@ -1,14 +1,9 @@
 import base64
 import string
-import time
-import uuid
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
-from app.config.config import settings
 from app.log.logger import get_gemini_logger
-from app.utils.helpers import is_image_upload_configured
-from app.utils.uploader import ImageUploaderFactory
 
 logger = get_gemini_logger()
 
@@ -62,9 +57,6 @@ def _extract_result(
             if "text" in parts[0]:
                 text = parts[0].get("text")
                 if "thought" in parts[0]:
-                    if not gemini_format and settings.SHOW_THINKING_PROCESS:
-                        reasoning_content = text
-                        text = ""
                     thought = parts[0].get("thought")
             elif "executableCode" in parts[0]:
                 text = _format_code_block(parts[0]["executableCode"])
@@ -94,9 +86,7 @@ def _extract_result(
                 if parts:
                     for part in parts:
                         if "text" in part:
-                            if "thought" in part and settings.SHOW_THINKING_PROCESS:
-                                reasoning_content += part["text"]
-                            else:
+                            if "thought" not in part:
                                 text += part["text"]
                             if "thought" in part and thought is None:
                                 thought = part.get("thought")
@@ -119,61 +109,11 @@ def _extract_result(
     return text, reasoning_content, tool_calls, thought
 
 
-def _has_inline_image_part(response: Dict[str, Any]) -> bool:
-    try:
-        for c in response.get("candidates", []):
-            for p in c.get("content", {}).get("parts", []):
-                if isinstance(p, dict) and ("inlineData" in p):
-                    return True
-    except Exception:
-        return False
-    return False
-
-
 def _extract_image_data(part: dict) -> str:
-    image_uploader = None
-    if settings.UPLOAD_PROVIDER == "smms":
-        image_uploader = ImageUploaderFactory.create(
-            provider=settings.UPLOAD_PROVIDER, api_key=settings.SMMS_SECRET_TOKEN
-        )
-    elif settings.UPLOAD_PROVIDER == "picgo":
-        image_uploader = ImageUploaderFactory.create(
-            provider=settings.UPLOAD_PROVIDER, 
-            api_key=settings.PICGO_API_KEY,
-            api_url=settings.PICGO_API_URL
-        )
-    elif settings.UPLOAD_PROVIDER == "cloudflare_imgbed":
-        image_uploader = ImageUploaderFactory.create(
-            provider=settings.UPLOAD_PROVIDER,
-            base_url=settings.CLOUDFLARE_IMGBED_URL,
-            auth_code=settings.CLOUDFLARE_IMGBED_AUTH_CODE,
-            upload_folder=settings.CLOUDFLARE_IMGBED_UPLOAD_FOLDER,
-        )
-    elif settings.UPLOAD_PROVIDER == "aliyun_oss":
-        image_uploader = ImageUploaderFactory.create(
-            provider=settings.UPLOAD_PROVIDER,
-            access_key=settings.OSS_ACCESS_KEY,
-            access_key_secret=settings.OSS_ACCESS_KEY_SECRET,
-            bucket_name=settings.OSS_BUCKET_NAME,
-            endpoint=settings.OSS_ENDPOINT,
-            region=settings.OSS_REGION,
-            use_internal=False
-        )
-    current_date = time.strftime("%Y/%m/%d")
-    filename = f"{current_date}/{uuid.uuid4().hex[:8]}.png"
+    """Format inline image as markdown with data URL."""
     base64_data = part["inlineData"]["data"]
     mime_type = part["inlineData"]["mimeType"]
-    # 将base64_data转成bytes数组
-    # Return empty string if no uploader is configured
-    if not is_image_upload_configured(settings):
-        return f"\n\n![image](data:{mime_type};base64,{base64_data})\n\n"
-    bytes_data = base64.b64decode(base64_data)
-    upload_response = image_uploader.upload(bytes_data, filename)
-    if upload_response.success:
-        text = f"\n\n![image]({upload_response.data.url})\n\n"
-    else:
-        text = f"\n\n![image](data:{mime_type};base64,{base64_data})\n\n"
-    return text
+    return f"\n\n![image](data:{mime_type};base64,{base64_data})\n\n"
 
 
 def _extract_tool_calls(
@@ -217,10 +157,6 @@ def _extract_tool_calls(
 def _handle_gemini_stream_response(
     response: Dict[str, Any], model: str, stream: bool
 ) -> Dict[str, Any]:
-    # Early return raw Gemini response if no uploader configured and contains inline images
-    if not is_image_upload_configured(settings) and _has_inline_image_part(response):
-        return response
-
     text, reasoning_content, tool_calls, thought = _extract_result(
         response, model, stream=stream, gemini_format=True
     )
@@ -238,10 +174,6 @@ def _handle_gemini_stream_response(
 def _handle_gemini_normal_response(
     response: Dict[str, Any], model: str, stream: bool
 ) -> Dict[str, Any]:
-    # Early return raw Gemini response if no uploader configured and contains inline images
-    if not is_image_upload_configured(settings) and _has_inline_image_part(response):
-        return response
-
     text, reasoning_content, tool_calls, thought = _extract_result(
         response, model, stream=stream, gemini_format=True
     )
@@ -266,25 +198,7 @@ def _format_code_block(code_data: dict) -> str:
 
 
 def _add_search_link_text(model: str, candidate: dict, text: str) -> str:
-    if (
-        settings.SHOW_SEARCH_LINK
-        and model.endswith("-search")
-        and "groundingMetadata" in candidate
-        and "groundingChunks" in candidate["groundingMetadata"]
-    ):
-        grounding_chunks = candidate["groundingMetadata"]["groundingChunks"]
-        text += "\n\n---\n\n"
-        text += "**【引用来源】**\n\n"
-        for _, grounding_chunk in enumerate(grounding_chunks, 1):
-            if "web" in grounding_chunk:
-                text += _create_search_link(grounding_chunk["web"])
-        return text
-    else:
-        return text
-
-
-def _create_search_link(grounding_chunk: dict) -> str:
-    return f'\n- [{grounding_chunk["title"]}]({grounding_chunk["uri"]})'
+    return text
 
 
 def _format_execution_result(result_data: dict) -> str:

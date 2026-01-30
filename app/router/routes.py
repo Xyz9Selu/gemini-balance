@@ -43,6 +43,8 @@ def setup_routers(app: FastAPI) -> None:
     app.include_router(key_tools_routes.router)
     app.include_router(key_tools_routes.router_v1beta)
 
+    # Files API (include before proxy so /v1beta/files/* is handled by files router, not proxy)
+    app.include_router(files_routes.router)
     # Gemini transparent transmission proxy (raw /v1beta/**)
     # This handles all Gemini API requests including /models, /models/{model}:generateContent, etc.
     # It automatically picks an API key and proxies requests transparently to Gemini API.
@@ -53,7 +55,6 @@ def setup_routers(app: FastAPI) -> None:
     app.include_router(stats_routes.router)
     app.include_router(version_routes.router)
     app.include_router(vertex_express_routes.router)
-    app.include_router(files_routes.router)
     app.include_router(key_routes.router)
 
     setup_page_routes(app)

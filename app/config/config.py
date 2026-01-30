@@ -12,15 +12,9 @@ from sqlalchemy import insert, select, update
 
 from app.core.constants import (
     API_VERSION,
-    DEFAULT_CREATE_IMAGE_MODEL,
-    DEFAULT_FILTER_MODELS,
+    DEFAULT_LOCAL_FILE_EXPIRE_MINUTES,
+    DEFAULT_LOCAL_UPLOAD_DIR,
     DEFAULT_MODEL,
-    DEFAULT_SAFETY_SETTINGS,
-    DEFAULT_STREAM_CHUNK_SIZE,
-    DEFAULT_STREAM_LONG_TEXT_THRESHOLD,
-    DEFAULT_STREAM_MAX_DELAY,
-    DEFAULT_STREAM_MIN_DELAY,
-    DEFAULT_STREAM_SHORT_TEXT_THRESHOLD,
     DEFAULT_TIMEOUT,
     MAX_RETRIES,
 )
@@ -59,80 +53,17 @@ class Settings(BaseSettings):
     TEST_MODEL: str = DEFAULT_MODEL
     TIME_OUT: int = DEFAULT_TIMEOUT
     MAX_RETRIES: int = MAX_RETRIES
-    PROXIES: List[str] = []
-    PROXIES_USE_CONSISTENCY_HASH_BY_API_KEY: bool = True  # 是否使用一致性哈希来选择代理
     VERTEX_API_KEYS: List[str] = []
     VERTEX_EXPRESS_BASE_URL: str = (
         "https://aiplatform.googleapis.com/v1beta1/publishers/google"
     )
 
-    # 智能路由配置
-    URL_NORMALIZATION_ENABLED: bool = False  # 是否启用智能路由映射功能
-
     # 自定义 Headers
     CUSTOM_HEADERS: Dict[str, str] = {}
-
-    # 模型相关配置
-    SEARCH_MODELS: List[str] = ["gemini-2.5-flash", "gemini-2.5-pro"]
-    IMAGE_MODELS: List[str] = ["gemini-2.0-flash-exp", "gemini-2.5-flash-image-preview"]
-    FILTERED_MODELS: List[str] = DEFAULT_FILTER_MODELS
-    TOOLS_CODE_EXECUTION_ENABLED: bool = False
-    # 是否启用网址上下文
-    URL_CONTEXT_ENABLED: bool = False
-    URL_CONTEXT_MODELS: List[str] = [
-        "gemini-2.5-pro",
-        "gemini-2.5-flash",
-        "gemini-2.5-flash-lite",
-        "gemini-2.0-flash",
-        "gemini-2.0-flash-live-001",
-    ]
-    SHOW_SEARCH_LINK: bool = True
-    SHOW_THINKING_PROCESS: bool = True
-    THINKING_MODELS: List[str] = []
-    THINKING_BUDGET_MAP: Dict[str, float] = {}
-
-    # TTS相关配置
-    TTS_MODEL: str = "gemini-2.5-flash-preview-tts"
-    TTS_VOICE_NAME: str = "Zephyr"
-    TTS_SPEED: str = "normal"
-
-    # 图像生成相关配置
-    PAID_KEY: str = ""
-    CREATE_IMAGE_MODEL: str = DEFAULT_CREATE_IMAGE_MODEL
-    UPLOAD_PROVIDER: str = "smms"
-    SMMS_SECRET_TOKEN: str = ""
-    PICGO_API_KEY: str = ""
-    PICGO_API_URL: str = "https://www.picgo.net/api/1/upload"
-    CLOUDFLARE_IMGBED_URL: str = ""
-    CLOUDFLARE_IMGBED_AUTH_CODE: str = ""
-    CLOUDFLARE_IMGBED_UPLOAD_FOLDER: str = ""
-    # 阿里云OSS配置
-    OSS_ENDPOINT: str = ""
-    OSS_ENDPOINT_INNER: str = ""
-    OSS_ACCESS_KEY: str = ""
-    OSS_ACCESS_KEY_SECRET: str = ""
-    OSS_BUCKET_NAME: str = ""
-    OSS_REGION: str = ""
-
-    # 流式输出优化器配置
-    STREAM_OPTIMIZER_ENABLED: bool = False
-    STREAM_MIN_DELAY: float = DEFAULT_STREAM_MIN_DELAY
-    STREAM_MAX_DELAY: float = DEFAULT_STREAM_MAX_DELAY
-    STREAM_SHORT_TEXT_THRESHOLD: int = DEFAULT_STREAM_SHORT_TEXT_THRESHOLD
-    STREAM_LONG_TEXT_THRESHOLD: int = DEFAULT_STREAM_LONG_TEXT_THRESHOLD
-    STREAM_CHUNK_SIZE: int = DEFAULT_STREAM_CHUNK_SIZE
-
-    # 假流式配置 (Fake Streaming Configuration)
-    FAKE_STREAM_ENABLED: bool = False  # 是否启用假流式输出
-    FAKE_STREAM_EMPTY_DATA_INTERVAL_SECONDS: int = 5  # 假流式发送空数据的间隔时间（秒）
 
     # 调度器配置
     CHECK_INTERVAL_HOURS: int = 1  # 默认检查间隔为1小时
     TIMEZONE: str = "Asia/Shanghai"  # 默认时区
-
-    # github
-    GITHUB_REPO_OWNER: str = "snailyp"
-    GITHUB_REPO_NAME: str = "gemini-balance"
 
     # 日志配置
     LOG_LEVEL: str = "INFO"
@@ -141,12 +72,16 @@ class Settings(BaseSettings):
     AUTO_DELETE_ERROR_LOGS_DAYS: int = 7
     AUTO_DELETE_REQUEST_LOGS_ENABLED: bool = False
     AUTO_DELETE_REQUEST_LOGS_DAYS: int = 30
-    SAFETY_SETTINGS: List[Dict[str, str]] = DEFAULT_SAFETY_SETTINGS
 
     # Files API
     FILES_CLEANUP_ENABLED: bool = True
     FILES_CLEANUP_INTERVAL_HOURS: int = 1
     FILES_USER_ISOLATION_ENABLED: bool = True
+
+    # Local file upload (deferred analyse)
+    ENABLE_LOCAL_FILE_UPLOAD: bool = True
+    LOCAL_UPLOAD_DIR: str = DEFAULT_LOCAL_UPLOAD_DIR
+    LOCAL_FILE_EXPIRE_MINUTES: int = DEFAULT_LOCAL_FILE_EXPIRE_MINUTES
 
     # Admin Session Configuration
     ADMIN_SESSION_EXPIRE: int = Field(
