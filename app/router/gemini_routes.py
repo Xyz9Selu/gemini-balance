@@ -62,8 +62,15 @@ async def list_models(
     logger.info("Handling Gemini models list request")
 
     try:
+        # 记录 KeyManager 的状态
+        logger.info(
+            f"[LIST MODELS] KeyManager has {len(key_manager.api_keys)} API keys"
+        )
+        logger.info(f"[LIST MODELS] KeyManager object id: {id(key_manager)}")
+
         api_key = await key_manager.get_random_valid_key()
         if not api_key:
+            logger.error("[LIST MODELS] No valid API keys available!")
             raise HTTPException(
                 status_code=503, detail="No valid API keys available to fetch models."
             )
@@ -91,7 +98,7 @@ async def list_models(
                 return
             item = deepcopy(model)
             item["name"] = f"models/{base_name}{suffix}"
-            display_name = f'{item.get("displayName", base_name)}{display_suffix}'
+            display_name = f"{item.get('displayName', base_name)}{display_suffix}"
             item["displayName"] = display_name
             item["description"] = display_name
             models_json["models"].append(item)

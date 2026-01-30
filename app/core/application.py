@@ -32,8 +32,37 @@ async def _setup_database_and_config(app_settings):
     initialize_database()
     logger.info("Database initialized successfully")
     await connect_to_db()
+
+    # 记录同步前的状态
+    logger.info(
+        f"[BEFORE SYNC] app_settings.API_KEYS count: {len(app_settings.API_KEYS)}"
+    )
+    logger.info(f"[BEFORE SYNC] app_settings object id: {id(app_settings)}")
+    logger.info(f"[BEFORE SYNC] global settings object id: {id(settings)}")
+    logger.info(f"[BEFORE SYNC] app_settings == settings: {app_settings is settings}")
+
     await sync_initial_settings()
-    await get_key_manager_instance(app_settings.API_KEYS, app_settings.VERTEX_API_KEYS)
+
+    # 记录同步后的状态
+    logger.info(
+        f"[AFTER SYNC] app_settings.API_KEYS count: {len(app_settings.API_KEYS)}"
+    )
+    logger.info(
+        f"[AFTER SYNC] global settings.API_KEYS count: {len(settings.API_KEYS)}"
+    )
+    logger.info(f"[AFTER SYNC] app_settings object id: {id(app_settings)}")
+    logger.info(f"[AFTER SYNC] global settings object id: {id(settings)}")
+    logger.info(f"[AFTER SYNC] app_settings == settings: {app_settings is settings}")
+
+    # 使用全局 settings 而不是 app_settings 来初始化 KeyManager
+    logger.info(
+        f"[KEYMANAGER INIT] Using global settings.API_KEYS with {len(settings.API_KEYS)} keys"
+    )
+    logger.info(
+        f"[KEYMANAGER INIT] Using global settings.VERTEX_API_KEYS with {len(settings.VERTEX_API_KEYS)} keys"
+    )
+
+    await get_key_manager_instance(settings.API_KEYS, settings.VERTEX_API_KEYS)
     logger.info("Database, config sync, and KeyManager initialized successfully")
 
 
