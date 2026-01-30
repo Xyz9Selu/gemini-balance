@@ -264,21 +264,10 @@ async def get_key_manager_instance(
                 logger.warning(
                     "Initializing KeyManager with an empty list of API keys."
                 )
-            else:
-                logger.info(
-                    f"[KEYMANAGER] Received {len(api_keys)} API keys for initialization"
-                )
-                logger.info(
-                    f"[KEYMANAGER] First API key preview: {api_keys[0][:15] if api_keys else 'N/A'}..."
-                )
 
             if not vertex_api_keys:
                 logger.warning(
                     "Initializing KeyManager with an empty list of Vertex Express API keys."
-                )
-            else:
-                logger.info(
-                    f"[KEYMANAGER] Received {len(vertex_api_keys)} Vertex API keys for initialization"
                 )
 
             _singleton_instance = KeyManager(api_keys, vertex_api_keys)
