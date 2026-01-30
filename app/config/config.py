@@ -6,7 +6,7 @@ import datetime
 import json
 from typing import Any, Dict, List, Type, get_args, get_origin
 
-from pydantic import Field, ValidationError, ValidationInfo, field_validator
+from pydantic import Field, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings
 from sqlalchemy import insert, select, update
 
@@ -330,18 +330,17 @@ async def sync_initial_settings():
                     f"Database setting '{key}' not found in Settings model definition. Ignoring."
                 )
 
-        # 如果内存中有更新，重新验证 Pydantic 模型（可选但推荐）
+        # 如果内存中有更新，记录日志
+        # 注意：不能在这里重新创建 settings 对象（settings = Settings(...)），
+        # 因为这会创建一个新对象，破坏已经导入该对象的其他模块的引用
+        # （例如 application.py 中的 `from app.config.config import settings`）
+        # 我们已经通过 setattr() 直接更新了全局 settings 对象的属性，
+        # 这样所有已导入 settings 的模块都能看到更新后的值
         if updated_in_memory:
-            try:
-                # 重新加载以确保类型转换和验证
-                settings = Settings(**settings.model_dump())
-                logger.info(
-                    "Settings object re-validated after merging database values."
-                )
-            except ValidationError as e:
-                logger.error(
-                    f"Validation error after merging database settings: {e}. Settings might be inconsistent."
-                )
+            logger.info(
+                "Settings object updated in-place from database values. "
+                f"Updated keys: {[k for k, v in db_settings_map.items() if hasattr(settings, k)]}"
+            )
 
         # 3. 将最终的内存 settings 同步回数据库
         final_memory_settings = settings.model_dump()

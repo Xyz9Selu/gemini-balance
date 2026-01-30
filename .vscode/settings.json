@@ -1,3 +1,7 @@
 {
-    "commentTranslate.source": "upupnoah.chatgpt-comment-translateX-chatgpt"
+    "commentTranslate.source": "upupnoah.chatgpt-comment-translateX-chatgpt",
+    "workbench.colorCustomizations": {
+        "titleBar.activeBackground": "#aa8af5ff",
+        "titleBar.inactiveBackground": "#b2a4d3ff"
+    }
 }

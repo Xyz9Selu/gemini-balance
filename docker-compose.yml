@@ -20,5 +20,6 @@ services:
 
 networks:
   default:
-    name: common-network
+    name: ${DOCKER_NETWORK:-public-network}
     external: true
+
