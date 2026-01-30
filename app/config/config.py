@@ -326,9 +326,8 @@ async def sync_initial_settings():
                             f"Error processing database setting for key '{key}': {e}"
                         )
             else:
-                logger.warning(
-                    f"Database setting '{key}' not found in Settings model definition. Ignoring."
-                )
+                # 静默忽略数据库中存在但未在 Settings 类中定义的配置项
+                pass
 
         # 如果内存中有更新，记录日志
         # 注意：不能在这里重新创建 settings 对象（settings = Settings(...)），
