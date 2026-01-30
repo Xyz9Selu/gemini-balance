@@ -102,6 +102,51 @@ class Settings(BaseSettings):
 settings = Settings()
 
 
+def _is_valid_api_key(key: str) -> bool:
+    """
+    检查 API key 是否有效
+
+    Google API key 的标准格式：
+    - 以 "AIza" 开头
+    - 长度恰好为 39 个字符
+
+    Args:
+        key: 要检查的 API key
+
+    Returns:
+        bool: key 是否有效
+    """
+    if not key or not isinstance(key, str):
+        return False
+
+    key = key.strip()
+
+    # Google API key 的标准格式：AIza + 35个字符 = 39字符
+    return key.startswith("AIza") and len(key) == 39
+
+
+def _filter_valid_api_keys(api_keys: list) -> tuple[list, list]:
+    """
+    过滤出有效的 API keys
+
+    Args:
+        api_keys: API keys 列表
+
+    Returns:
+        tuple: (valid_keys, invalid_keys)
+    """
+    valid_keys = []
+    invalid_keys = []
+
+    for key in api_keys:
+        if _is_valid_api_key(key):
+            valid_keys.append(key)
+        else:
+            invalid_keys.append(key)
+
+    return valid_keys, invalid_keys
+
+
 def _parse_db_value(key: str, db_value: str, target_type: Type) -> Any:
     """尝试将数据库字符串值解析为目标 Python 类型"""
     from app.log.logger import get_config_logger
@@ -340,6 +385,60 @@ async def sync_initial_settings():
                 "Settings object updated in-place from database values. "
                 f"Updated keys: {[k for k, v in db_settings_map.items() if hasattr(settings, k)]}"
             )
+
+        # 2.5. 清理无效的 API keys（在同步回数据库之前）
+        if settings.API_KEYS:
+            original_count = len(settings.API_KEYS)
+            valid_keys, invalid_keys = _filter_valid_api_keys(settings.API_KEYS)
+
+            if invalid_keys:
+                logger.warning(
+                    f"Found {len(invalid_keys)} invalid API key(s) in configuration. "
+                    f"Removing them automatically."
+                )
+                for i, invalid_key in enumerate(invalid_keys[:5], 1):  # 最多显示 5 个
+                    # 截断显示，避免日志过长
+                    display_key = (
+                        invalid_key
+                        if len(invalid_key) < 50
+                        else f"{invalid_key[:47]}..."
+                    )
+                    logger.warning(f"  Invalid API key #{i}: {display_key}")
+
+                if len(invalid_keys) > 5:
+                    logger.warning(
+                        f"  ... and {len(invalid_keys) - 5} more invalid key(s)"
+                    )
+
+                # 更新内存中的配置
+                settings.API_KEYS = valid_keys
+                logger.info(
+                    f"API keys cleaned: {original_count} -> {len(valid_keys)} "
+                    f"(removed {len(invalid_keys)} invalid key(s))"
+                )
+
+                if not valid_keys:
+                    logger.error(
+                        "⚠️  All API keys are invalid! Please add valid Google API keys "
+                        "through the admin interface."
+                    )
+            else:
+                logger.info(f"All {original_count} API key(s) are valid.")
+
+        # 同样清理 VERTEX_API_KEYS
+        if settings.VERTEX_API_KEYS:
+            original_count = len(settings.VERTEX_API_KEYS)
+            valid_keys, invalid_keys = _filter_valid_api_keys(settings.VERTEX_API_KEYS)
+
+            if invalid_keys:
+                logger.warning(
+                    f"Found {len(invalid_keys)} invalid Vertex API key(s). Removing them automatically."
+                )
+                settings.VERTEX_API_KEYS = valid_keys
+                logger.info(
+                    f"Vertex API keys cleaned: {original_count} -> {len(valid_keys)} "
+                    f"(removed {len(invalid_keys)} invalid key(s))"
+                )
 
         # 3. 将最终的内存 settings 同步回数据库
         final_memory_settings = settings.model_dump()
