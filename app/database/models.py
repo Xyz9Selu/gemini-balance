@@ -127,3 +127,21 @@ class FileRecord(Base):
         if expiration_time.tzinfo is None:
             expiration_time = expiration_time.replace(tzinfo=datetime.timezone.utc)
         return datetime.datetime.now(datetime.timezone.utc) > expiration_time
+
+
+class LocalFileRecord(Base):
+    """
+    本地文件记录表，用于存储未上传到 Gemini 的本地文件元数据。
+    文件实体存储在 LOCAL_UPLOAD_DIR 目录下，文件名即 id。
+    """
+    __tablename__ = "t_local_file_records"
+
+    id = Column(String(64), primary_key=True, comment="本地文件 ID，对应磁盘上的文件名")
+    mime_type = Column(String(100), nullable=False, comment="MIME 类型")
+    size_bytes = Column(BigInteger, nullable=False, comment="文件大小（字节）")
+    display_name = Column(String(255), nullable=True, comment="显示名称")
+    expires_at = Column(DateTime, nullable=False, comment="过期时间")
+    created_at = Column(DateTime, nullable=False, comment="创建时间")
+
+    def __repr__(self):
+        return f"<LocalFileRecord(id='{self.id}', mime_type='{self.mime_type}')>"

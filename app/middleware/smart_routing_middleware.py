@@ -1,6 +1,5 @@
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
-from app.config.config import settings
 from app.log.logger import get_main_logger
 import re
 
@@ -13,9 +12,8 @@ class SmartRoutingMiddleware(BaseHTTPMiddleware):
         pass
 
     async def dispatch(self, request: Request, call_next):
-        if not settings.URL_NORMALIZATION_ENABLED:
-            return await call_next(request)
-        logger.debug(f"request: {request}")
+        # URL normalization disabled (config removed)
+        return await call_next(request)
         original_path = str(request.url.path)
         method = request.method
         

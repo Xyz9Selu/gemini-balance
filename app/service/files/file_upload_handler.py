@@ -2,6 +2,7 @@
 文件上传处理器
 处理 Google 的可恢复上传协议
 """
+import json
 from typing import Optional
 from datetime import datetime, timezone, timedelta
 
@@ -12,6 +13,7 @@ from app.config.config import settings
 from app.database import services as db_services
 from app.database.models import FileState
 from app.log.logger import get_files_logger
+from app.service.files.local_file_service import save_local_file
 from app.utils.helpers import redact_key_for_logging
 
 logger = get_files_logger()
@@ -182,6 +184,64 @@ class FileUploadHandler:
             logger.error(f"Failed to handle upload chunk: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
     
+    async def handle_local_upload(
+        self,
+        request: Request,
+        upload_id: str,
+        session_info: dict,
+        files_service,
+    ) -> Response:
+        """
+        处理本地上传：累积分块，最终保存到本地并返回 Gemini 形状的响应。
+        """
+        try:
+            if request.method == "GET":
+                return Response(
+                    status_code=200,
+                    headers={"X-Goog-Upload-Status": "active"},
+                )
+            body = await request.body()
+            upload_cmd = (request.headers.get("x-goog-upload-command") or "").strip().lower()
+            is_final = "finalize" in upload_cmd
+            session_info.setdefault("chunks", []).append(body)
+            if not is_final:
+                return Response(
+                    status_code=308,
+                    headers={"X-Goog-Upload-Status": "active"},
+                )
+            full_data = b"".join(session_info["chunks"])
+            mime_type = session_info.get("mime_type", "application/octet-stream")
+            display_name = session_info.get("display_name") or None
+            file_name = await save_local_file(
+                bytes_data=full_data,
+                mime_type=mime_type,
+                display_name=display_name,
+            )
+            await files_service.remove_upload_session(upload_id)
+            now = datetime.now(timezone.utc)
+            expires_at = now + timedelta(minutes=settings.LOCAL_FILE_EXPIRE_MINUTES)
+            synthetic = {
+                "file": {
+                    "name": file_name,
+                    "displayName": display_name or "",
+                    "mimeType": mime_type,
+                    "sizeBytes": str(len(full_data)),
+                    "createTime": now.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+                    "updateTime": now.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+                    "expirationTime": expires_at.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+                    "uri": f"{settings.BASE_URL}/{file_name}",
+                    "state": "ACTIVE",
+                }
+            }
+            return Response(
+                content=json.dumps(synthetic),
+                status_code=200,
+                media_type="application/json",
+            )
+        except Exception as e:
+            logger.error(f"Local upload failed: {str(e)}", exc_info=True)
+            raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+
     async def proxy_upload_request(
         self,
         request: Request,

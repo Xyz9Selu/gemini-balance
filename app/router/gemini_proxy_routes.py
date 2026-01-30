@@ -22,6 +22,7 @@ from app.config.config import settings
 from app.core.security import SecurityService
 from app.database.services import add_error_log, add_request_log, get_file_api_key
 from app.log.logger import get_gemini_logger
+from app.service.files.local_file_resolver import resolve_local_files_in_body
 from app.service.key.key_manager import KeyManager, get_key_manager_instance
 from app.utils.helpers import redact_key_for_logging
 
@@ -146,7 +147,7 @@ def _extract_file_references_from_body(body: bytes) -> list[str]:
                 file_uri = file_data.get("fileUri", "")
                 # Extract file name from URI
                 # Format: https://generativelanguage.googleapis.com/v1beta/files/{file_id}
-                # or: files/{file_id}
+                # or: files/{file_id} or files/local/{id}
                 match = re.match(
                     rf"{re.escape(settings.BASE_URL)}/(files/.*)", file_uri
                 )
@@ -155,7 +156,7 @@ def _extract_file_references_from_body(body: bytes) -> list[str]:
                     file_names.append(file_name)
                     logger.info(f"Found file reference in request: {file_name}")
                 elif file_uri.startswith("files/"):
-                    # Direct file reference without full URL
+                    # Direct file reference without full URL (includes files/local/...)
                     file_names.append(file_uri)
                     logger.info(f"Found direct file reference in request: {file_uri}")
     except (json.JSONDecodeError, KeyError, TypeError) as e:
@@ -258,24 +259,33 @@ async def gemini_v1beta_proxy(
     
     # Check for file references in the request body and get the appropriate API key
     has_file_references = False
+    has_local_file_refs = False
     file_specific_api_key: Optional[str] = None
     if request_body:
         file_names = _extract_file_references_from_body(request_body)
         if file_names:
             has_file_references = True
+            has_local_file_refs = any(
+                fn.startswith("files/local/") for fn in file_names
+            )
             logger.info(f"Request contains file references: {file_names}")
-            # Use the API key from the first file (if multiple files, they should use the same key)
-            file_api_key = await get_file_api_key(file_names[0])
-            if file_api_key:
-                logger.info(
-                    f"Using API key from file {file_names[0]}: {redact_key_for_logging(file_api_key)}"
-                )
-                api_key = file_api_key
-                file_specific_api_key = file_api_key
+            if has_local_file_refs:
+                # Local files: resolve in loop with current key each attempt; do not use DB key
+                api_key = None
+                file_specific_api_key = None
             else:
-                logger.warning(
-                    f"No API key found for file {file_names[0]}, will use default key selection"
-                )
+                # Use the API key from the first file (if multiple files, they should use the same key)
+                file_api_key = await get_file_api_key(file_names[0])
+                if file_api_key:
+                    logger.info(
+                        f"Using API key from file {file_names[0]}: {redact_key_for_logging(file_api_key)}"
+                    )
+                    api_key = file_api_key
+                    file_specific_api_key = file_api_key
+                else:
+                    logger.warning(
+                        f"No API key found for file {file_names[0]}, will use default key selection"
+                    )
 
     # Prepare headers (copy most inbound headers through)
     outgoing_headers = _filter_outgoing_headers(request.scope.get("headers", []))
@@ -288,6 +298,29 @@ async def gemini_v1beta_proxy(
         retries = attempt + 1
         api_key = await key_manager.get_next_working_key() if api_key is None else api_key
 
+        # For local file refs: resolve (upload to Gemini + substitute in body) with current key each attempt
+        body_to_send = request_body
+        if has_local_file_refs and request_body and api_key:
+            try:
+                body_to_send, _ = await resolve_local_files_in_body(request_body, api_key)
+            except Exception as e:
+                logger.warning(f"Resolve local files failed: {e}")
+                last_error = str(e)
+                last_status = None
+                await add_error_log(
+                    gemini_key=api_key,
+                    model_name=model_name,
+                    error_type="gemini-proxy-local-resolve",
+                    error_log=last_error,
+                    error_code=None,
+                    request_msg=json.loads(request_body.decode("utf-8", errors="replace")) if (settings.ERROR_LOG_RECORD_REQUEST_BODY and request_body) else None,
+                    request_datetime=request_datetime,
+                )
+                api_key = await key_manager.handle_api_failure(api_key, retries)
+                if not api_key:
+                    break
+                continue
+
         qp = dict(original_qp)
         qp["key"] = api_key
         upstream_url = str(httpx.URL(f"{upstream_base}/{upstream_path}").copy_with(params=qp))
@@ -299,7 +332,7 @@ async def gemini_v1beta_proxy(
                 outgoing_headers=outgoing_headers,
                 timeout_s=settings.TIME_OUT,
                 stream=stream,
-                body=request_body,
+                body=body_to_send,
             )
 
             last_status = status_code
@@ -334,13 +367,13 @@ async def gemini_v1beta_proxy(
                 error_type="gemini-proxy",
                 error_log=last_error,
                 error_code=status_code,
-                request_msg=json.loads(request_body.decode("utf-8", errors="replace")) if (settings.ERROR_LOG_RECORD_REQUEST_BODY and request_body) else None,
+                request_msg=json.loads(body_to_send.decode("utf-8", errors="replace")) if (settings.ERROR_LOG_RECORD_REQUEST_BODY and body_to_send) else None,
                 request_datetime=request_datetime,
             )
 
-            # If we're using a file-specific API key, don't switch keys on retry
-            # because the file can only be accessed with its original key
-            if has_file_references and file_specific_api_key and api_key == file_specific_api_key:
+            # If we're using a file-specific API key (Gemini file), don't switch keys on retry.
+            # For local file refs we always switch key and re-upload on retry.
+            if has_file_references and not has_local_file_refs and file_specific_api_key and api_key == file_specific_api_key:
                 logger.warning(
                     f"Request with file references failed with API key {redact_key_for_logging(api_key)}. "
                     f"Cannot switch keys as file can only be accessed with its original key."
@@ -365,8 +398,8 @@ async def gemini_v1beta_proxy(
                 request_msg=json.loads(request_body.decode("utf-8", errors="replace")) if (settings.ERROR_LOG_RECORD_REQUEST_BODY and request_body) else None,
                 request_datetime=request_datetime,
             )
-            # If we're using a file-specific API key, don't switch keys on retry
-            if has_file_references and file_specific_api_key and api_key == file_specific_api_key:
+            # If we're using a file-specific API key (Gemini file), don't switch keys on retry
+            if has_file_references and not has_local_file_refs and file_specific_api_key and api_key == file_specific_api_key:
                 logger.warning(
                     f"Request with file references failed with network error. "
                     f"Cannot switch keys as file can only be accessed with its original key."

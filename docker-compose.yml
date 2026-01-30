@@ -1,16 +1,16 @@
-volumes:
-  mysql_data:
 services:
   gemini-balance:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: gemini-balance
+    container_name: gemini-balance-xyz
     restart: unless-stopped
     ports:
-      - "18000:8000"
+      - "127.0.0.1:8001:8000"
     env_file:
       - .env
+    volumes:
+      - ./data:/app/data
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import requests; exit(0) if requests.get('http://localhost:8000/health').status_code == 200 else exit(1)\""]
       interval: 30s
@@ -20,5 +20,5 @@ services:
 
 networks:
   default:
-    name: bizlink-speedy-network
+    name: common-network
     external: true

@@ -257,23 +257,6 @@ class ConfigService:
                 seen.add(model_id)
                 data.append({"id": model_id})
 
-                # Derived IDs (these are just convenience IDs for UI selection)
-                if model_id in settings.SEARCH_MODELS:
-                    derived = f"{model_id}-search"
-                    if derived not in seen:
-                        seen.add(derived)
-                        data.append({"id": derived})
-                if model_id in settings.IMAGE_MODELS:
-                    derived = f"{model_id}-image"
-                    if derived not in seen:
-                        seen.add(derived)
-                        data.append({"id": derived})
-                if model_id in settings.THINKING_MODELS:
-                    derived = f"{model_id}-non-thinking"
-                    if derived not in seen:
-                        seen.add(derived)
-                        data.append({"id": derived})
-
             return {"object": "list", "data": data, "success": True}
         except HTTPException as e:
             raise e

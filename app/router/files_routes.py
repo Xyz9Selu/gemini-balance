@@ -210,22 +210,28 @@ async def handle_upload(
         if not upload_id:
             raise HTTPException(status_code=400, detail="Missing upload_id")
         
-        # 從 session 獲取真實的 API key
+        # 從 session 獲取會話信息
         files_service = await get_files_service()
         session_info = await files_service.get_upload_session(upload_id)
         if not session_info:
             logger.error(f"No session found for upload_id: {upload_id}")
             raise HTTPException(status_code=404, detail="Upload session not found")
-        
+
+        # 本地文件上傳：累積分塊，最終保存到本地並返回 file id
+        if session_info.get("local"):
+            upload_handler = get_upload_handler()
+            return await upload_handler.handle_local_upload(
+                request=request,
+                upload_id=upload_id,
+                session_info=session_info,
+                files_service=files_service,
+            )
+
         real_api_key = session_info["api_key"]
         original_upload_url = session_info["upload_url"]
-        
-        # 使用真實的 API key 構建完整的 Google 上傳 URL
-        # 保留原始 URL 的所有參數，但使用真實的 API key
         upload_url = original_upload_url
         logger.info(f"Using real API key for upload: {redact_key_for_logging(real_api_key)}")
-        
-        # 代理上传请求
+
         upload_handler = get_upload_handler()
         return await upload_handler.proxy_upload_request(
             request=request,

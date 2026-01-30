@@ -2,15 +2,16 @@
 
 import datetime
 import json
+import re
 import time
 from typing import Any, AsyncGenerator, Dict, List
 
 from app.config.config import settings
-from app.core.constants import GEMINI_2_FLASH_EXP_SAFETY_SETTINGS
+from app.core.constants import DEFAULT_SAFETY_SETTINGS, GEMINI_2_FLASH_EXP_SAFETY_SETTINGS
 from app.database.services import add_error_log, add_request_log
 from app.domain.gemini_models import GeminiRequest
+from app.service.files.local_file_resolver import resolve_local_files_in_body
 from app.handler.response_handler import GeminiResponseHandler
-from app.handler.stream_optimizer import gemini_optimizer
 from app.log.logger import get_gemini_logger
 from app.service.client.api_client import GeminiApiClient
 from app.service.key.key_manager import KeyManager
@@ -27,6 +28,37 @@ def _has_image_parts(contents: List[Dict[str, Any]]) -> bool:
                 if "image_url" in part or "inline_data" in part:
                     return True
     return False
+
+
+def _extract_file_references(contents: List[Dict[str, Any]]) -> List[str]:
+    """從內容中提取文件引用（含 files/ 與 files/local/）"""
+    file_names = []
+    for content in contents or []:
+        for part in (content.get("parts") or []):
+            fd = (part or {}).get("fileData") or {}
+            uri = fd.get("fileUri") or ""
+            if not uri:
+                continue
+            if uri.startswith("files/"):
+                file_names.append(uri)
+            else:
+                match = re.match(rf".*/(files/.*)$", uri)
+                if match:
+                    file_names.append(match.group(1))
+    return file_names
+
+
+def _has_local_file_refs(file_names: List[str]) -> bool:
+    return any(fn.startswith("files/local/") for fn in file_names)
+
+
+async def _resolve_local_refs_in_payload(
+    payload: Dict[str, Any], api_key: str
+) -> Dict[str, Any]:
+    """若 payload 中有本地文件引用，上傳到 Gemini 並替換為 Gemini file name。"""
+    body = json.dumps(payload).encode("utf-8")
+    new_body, _ = await resolve_local_files_in_body(body, api_key)
+    return json.loads(new_body.decode("utf-8"))
 
 
 def _clean_json_schema_properties(obj: Any) -> Any:
@@ -132,22 +164,6 @@ def _build_tools(model: str, payload: Dict[str, Any]) -> List[Dict[str, Any]]:
     # "Tool use with a response mime type: 'application/json' is unsupported"
     # Gemini API限制：不支持同时使用tools和结构化输出(response_mime_type='application/json')
     # 当请求指定了JSON响应格式时，跳过所有工具的添加以避免API错误
-    has_structured_output = _is_structured_output_request(payload)
-    if not has_structured_output:
-        if (
-            settings.TOOLS_CODE_EXECUTION_ENABLED
-            and not (model.endswith("-search") or "-thinking" in model)
-            and not _has_image_parts(payload.get("contents", []))
-        ):
-            tool["codeExecution"] = {}
-
-        if model.endswith("-search"):
-            tool["googleSearch"] = {}
-
-        real_model = _get_real_model(model)
-        if real_model in settings.URL_CONTEXT_MODELS and settings.URL_CONTEXT_ENABLED:
-            tool["urlContext"] = {}
-
     # 解决 "Tool use with function calling is unsupported" 问题
     if tool.get("functionDeclarations") or _has_function_call(
         payload.get("contents", [])
@@ -175,7 +191,7 @@ def _get_safety_settings(model: str) -> List[Dict[str, str]]:
     """获取安全设置"""
     if model == "gemini-2.0-flash-exp":
         return GEMINI_2_FLASH_EXP_SAFETY_SETTINGS
-    return settings.SAFETY_SETTINGS
+    return DEFAULT_SAFETY_SETTINGS
 
 
 def _build_payload(model: str, request: GeminiRequest) -> Dict[str, Any]:
@@ -198,31 +214,11 @@ def _build_payload(model: str, request: GeminiRequest) -> Dict[str, Any]:
         payload.pop("systemInstruction")
         payload["generationConfig"]["responseModalities"] = ["Text", "Image"]
 
-    # 处理思考配置：优先使用客户端提供的配置，否则使用默认配置
-    client_thinking_config = None
+    # 思考配置：仅当客户端显式提供时使用
     if request.generationConfig and request.generationConfig.thinkingConfig:
-        client_thinking_config = request.generationConfig.thinkingConfig
-
-    if client_thinking_config is not None:
-        # 客户端提供了思考配置，直接使用
-        payload["generationConfig"]["thinkingConfig"] = client_thinking_config
-    else:
-        # 客户端没有提供思考配置，使用默认配置
-        if model.endswith("-non-thinking"):
-            if "gemini-2.5-pro" in model:
-                payload["generationConfig"]["thinkingConfig"] = {"thinkingBudget": 128}
-            else:
-                payload["generationConfig"]["thinkingConfig"] = {"thinkingBudget": 0}
-        elif _get_real_model(model) in settings.THINKING_BUDGET_MAP:
-            if settings.SHOW_THINKING_PROCESS:
-                payload["generationConfig"]["thinkingConfig"] = {
-                    "thinkingBudget": settings.THINKING_BUDGET_MAP.get(model, 1000),
-                    "includeThoughts": True,
-                }
-            else:
-                payload["generationConfig"]["thinkingConfig"] = {
-                    "thinkingBudget": settings.THINKING_BUDGET_MAP.get(model, 1000)
-                }
+        payload["generationConfig"]["thinkingConfig"] = (
+            request.generationConfig.thinkingConfig
+        )
 
     return payload
 
@@ -264,6 +260,11 @@ class GeminiChatService:
     ) -> Dict[str, Any]:
         """生成内容"""
         payload = _build_payload(model, request)
+        file_names = _extract_file_references(
+            request.model_dump().get("contents", [])
+        )
+        if file_names and _has_local_file_refs(file_names):
+            payload = await _resolve_local_refs_in_payload(payload, api_key)
         start_time = time.perf_counter()
         request_datetime = datetime.datetime.now()
         is_success = False
@@ -309,7 +310,11 @@ class GeminiChatService:
         """流式生成内容"""
         retries = 0
         max_retries = settings.MAX_RETRIES
-        payload = _build_payload(model, request)
+        base_payload = _build_payload(model, request)
+        file_names = _extract_file_references(
+            request.model_dump().get("contents", [])
+        )
+        has_local_refs = file_names and _has_local_file_refs(file_names)
         is_success = False
         status_code = None
         final_api_key = api_key
@@ -319,6 +324,11 @@ class GeminiChatService:
             start_time = time.perf_counter()
             current_attempt_key = api_key
             final_api_key = current_attempt_key  # Update final key used
+            payload = base_payload
+            if has_local_refs:
+                payload = await _resolve_local_refs_in_payload(
+                    base_payload, current_attempt_key
+                )
             try:
                 async for line in self.api_client.stream_generate_content(
                     payload, model, current_attempt_key
@@ -329,21 +339,8 @@ class GeminiChatService:
                         response_data = self.response_handler.handle_response(
                             json.loads(line), model, stream=True
                         )
-                        text = self._extract_text_from_response(response_data)
-                        # 如果有文本内容，且开启了流式输出优化器，则使用流式输出优化器处理
-                        if text and settings.STREAM_OPTIMIZER_ENABLED:
-                            # 使用流式输出优化器处理文本输出
-                            async for (
-                                optimized_chunk
-                            ) in gemini_optimizer.optimize_stream_output(
-                                text,
-                                lambda t: self._create_char_response(response_data, t),
-                                lambda c: "data: " + json.dumps(c) + "\n\n",
-                            ):
-                                yield optimized_chunk
-                        else:
-                            # 如果没有文本内容（如工具调用等），整块输出
-                            yield "data: " + json.dumps(response_data) + "\n\n"
+                        # 整块输出
+                        yield "data: " + json.dumps(response_data) + "\n\n"
                 logger.info("Streaming completed successfully")
                 is_success = True
                 status_code = 200

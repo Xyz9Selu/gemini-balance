@@ -82,16 +82,6 @@ async def list_models(
             item["description"] = display_name
             models_json["models"].append(item)
 
-        if settings.SEARCH_MODELS:
-            for name in settings.SEARCH_MODELS:
-                add_derived_model(name, "-search", " For Search")
-        if settings.IMAGE_MODELS:
-            for name in settings.IMAGE_MODELS:
-                add_derived_model(name, "-image", " For Image")
-        if settings.THINKING_MODELS:
-            for name in settings.THINKING_MODELS:
-                add_derived_model(name, "-non-thinking", " Non Thinking")
-
         logger.info("Gemini models list request successful")
         return models_json
     except HTTPException as http_exc:

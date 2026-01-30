@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional, Union
 from sqlalchemy import asc, delete, desc, func, insert, select, update
 
 from app.database.connection import database
-from app.database.models import ErrorLog, FileRecord, FileState, RequestLog, Settings
+from app.database.models import ErrorLog, FileRecord, FileState, LocalFileRecord, RequestLog, Settings
 from app.log.logger import get_database_logger
 from app.utils.helpers import redact_key_for_logging
 
@@ -802,4 +802,171 @@ async def get_file_api_key(name: str) -> Optional[str]:
         return result["api_key"] if result else None
     except Exception as e:
         logger.error(f"Failed to get file API key: {str(e)}")
+        raise
+
+
+# ==================== 本地文件记录相关函数 ====================
+
+LOCAL_FILE_NAME_PREFIX = "files/local/"
+
+
+def _local_name_to_id(name: str) -> Optional[str]:
+    """从 files/local/{id} 提取 id"""
+    if not name or not name.startswith(LOCAL_FILE_NAME_PREFIX):
+        return None
+    return name[len(LOCAL_FILE_NAME_PREFIX) :].strip() or None
+
+
+async def create_local_file_record(
+    id: str,
+    mime_type: str,
+    size_bytes: int,
+    expires_at: datetime,
+    display_name: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    创建本地文件记录
+
+    Args:
+        id: 本地文件 ID (uuid)
+        mime_type: MIME 类型
+        size_bytes: 文件大小（字节）
+        expires_at: 过期时间
+        display_name: 显示名称（可选）
+
+    Returns:
+        Dict[str, Any]: 创建的记录
+    """
+    try:
+        now = datetime.now(timezone.utc)
+        query = insert(LocalFileRecord).values(
+            id=id,
+            mime_type=mime_type,
+            size_bytes=size_bytes,
+            display_name=display_name,
+            expires_at=expires_at,
+            created_at=now,
+        )
+        await database.execute(query)
+        return {
+            "id": id,
+            "mime_type": mime_type,
+            "size_bytes": size_bytes,
+            "display_name": display_name,
+            "expires_at": expires_at,
+            "created_at": now,
+        }
+    except Exception as e:
+        logger.error(f"Failed to create local file record: {e}")
+        raise
+
+
+async def get_local_file_record_by_name(name: str) -> Optional[Dict[str, Any]]:
+    """
+    根据名称获取本地文件记录 (name 格式: files/local/{id})
+
+    Returns:
+        Optional[Dict[str, Any]]: 记录，不存在或已过期则返回 None
+    """
+    local_id = _local_name_to_id(name)
+    if not local_id:
+        return None
+    try:
+        query = select(LocalFileRecord).where(
+            (LocalFileRecord.id == local_id)
+            & (LocalFileRecord.expires_at > datetime.now(timezone.utc))
+        )
+        result = await database.fetch_one(query)
+        return dict(result) if result else None
+    except Exception as e:
+        logger.error(f"Failed to get local file record by name {name}: {e}")
+        raise
+
+
+async def get_local_file_record_by_id(local_id: str) -> Optional[Dict[str, Any]]:
+    """
+    根据 id 获取本地文件记录（不检查过期，供内部使用）
+    """
+    try:
+        query = select(LocalFileRecord).where(LocalFileRecord.id == local_id)
+        result = await database.fetch_one(query)
+        return dict(result) if result else None
+    except Exception as e:
+        logger.error(f"Failed to get local file record by id {local_id}: {e}")
+        raise
+
+
+async def delete_local_file_record(name: str) -> bool:
+    """
+    删除本地文件记录 (name 格式: files/local/{id})
+    """
+    local_id = _local_name_to_id(name)
+    if not local_id:
+        return False
+    try:
+        query = delete(LocalFileRecord).where(LocalFileRecord.id == local_id)
+        await database.execute(query)
+        return True
+    except Exception as e:
+        logger.error(f"Failed to delete local file record: {e}")
+        return False
+
+
+async def list_expired_local_file_records() -> List[Dict[str, Any]]:
+    """
+    列出已过期的本地文件记录
+    """
+    try:
+        query = select(LocalFileRecord).where(
+            LocalFileRecord.expires_at <= datetime.now(timezone.utc)
+        )
+        result = await database.fetch_all(query)
+        return [dict(row) for row in result]
+    except Exception as e:
+        logger.error(f"Failed to list expired local file records: {e}")
+        raise
+
+
+async def delete_expired_local_file_records() -> List[Dict[str, Any]]:
+    """
+    删除已过期的本地文件记录，返回被删除的记录列表
+    """
+    try:
+        expired = await list_expired_local_file_records()
+        if not expired:
+            return []
+        ids = [r["id"] for r in expired]
+        query = delete(LocalFileRecord).where(LocalFileRecord.id.in_(ids))
+        await database.execute(query)
+        logger.info(f"Deleted {len(expired)} expired local file records")
+        return expired
+    except Exception as e:
+        logger.error(f"Failed to delete expired local file records: {e}")
+        raise
+
+
+async def list_local_file_records(
+    page_size: int = 100,
+    page_token: Optional[str] = None,
+) -> tuple[List[Dict[str, Any]], Optional[str]]:
+    """
+    列出本地文件记录（未过期的），用于 GET list API。
+    page_token 暂不支持，返回 (records, next_page_token).
+    """
+    try:
+        query = (
+            select(LocalFileRecord)
+            .where(LocalFileRecord.expires_at > datetime.now(timezone.utc))
+            .order_by(LocalFileRecord.created_at.desc())
+            .limit(page_size + 1)
+        )
+        result = await database.fetch_all(query)
+        rows = [dict(r) for r in result]
+        next_token = None
+        if len(rows) > page_size:
+            rows = rows[:page_size]
+            next_token = rows[-1]["id"] if rows else None
+        return rows, next_token
+    except Exception as e:
+        logger.error(f"Failed to list local file records: {e}")
         raise
