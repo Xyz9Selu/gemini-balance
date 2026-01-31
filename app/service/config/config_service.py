@@ -44,21 +44,6 @@ class ConfigService:
                 valid_keys, invalid_keys = _filter_valid_api_keys(api_keys)
 
                 if invalid_keys:
-                    logger.warning(
-                        f"Rejected {len(invalid_keys)} invalid API key(s) during configuration save"
-                    )
-                    for i, invalid_key in enumerate(invalid_keys[:3], 1):
-                        display_key = (
-                            invalid_key
-                            if len(invalid_key) < 50
-                            else f"{invalid_key[:47]}..."
-                        )
-                        logger.warning(f"  Rejected API key #{i}: {display_key}")
-
-                    if len(invalid_keys) > 3:
-                        logger.warning(f"  ... and {len(invalid_keys) - 3} more")
-
-                    # 只保存有效的 keys
                     config_data["API_KEYS"] = valid_keys
 
                     if not valid_keys:
@@ -67,9 +52,9 @@ class ConfigService:
                             detail=f"All {original_count} API key(s) are invalid. Please provide valid Google API keys (starting with 'AIza').",
                         )
 
-                    logger.info(
-                        f"API keys validated: {original_count} -> {len(valid_keys)} "
-                        f"(rejected {len(invalid_keys)} invalid key(s))"
+                    logger.warning(
+                        f"Rejected {len(invalid_keys)} invalid API key(s). "
+                        f"Valid keys: {len(valid_keys)}/{original_count}"
                     )
 
         # 同样验证 VERTEX_API_KEYS
@@ -80,10 +65,11 @@ class ConfigService:
             if isinstance(vertex_keys, list) and vertex_keys:
                 valid_keys, invalid_keys = _filter_valid_api_keys(vertex_keys)
                 if invalid_keys:
-                    logger.warning(
-                        f"Rejected {len(invalid_keys)} invalid Vertex API key(s) during save"
-                    )
                     config_data["VERTEX_API_KEYS"] = valid_keys
+                    logger.warning(
+                        f"Rejected {len(invalid_keys)} invalid Vertex API key(s). "
+                        f"Valid keys: {len(valid_keys)}/{len(vertex_keys)}"
+                    )
 
         for key, value in config_data.items():
             if hasattr(settings, key):

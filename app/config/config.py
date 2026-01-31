@@ -392,38 +392,17 @@ async def sync_initial_settings():
             valid_keys, invalid_keys = _filter_valid_api_keys(settings.API_KEYS)
 
             if invalid_keys:
-                logger.warning(
-                    f"Found {len(invalid_keys)} invalid API key(s) in configuration. "
-                    f"Removing them automatically."
-                )
-                for i, invalid_key in enumerate(invalid_keys[:5], 1):  # 最多显示 5 个
-                    # 截断显示，避免日志过长
-                    display_key = (
-                        invalid_key
-                        if len(invalid_key) < 50
-                        else f"{invalid_key[:47]}..."
-                    )
-                    logger.warning(f"  Invalid API key #{i}: {display_key}")
-
-                if len(invalid_keys) > 5:
-                    logger.warning(
-                        f"  ... and {len(invalid_keys) - 5} more invalid key(s)"
-                    )
-
-                # 更新内存中的配置
                 settings.API_KEYS = valid_keys
-                logger.info(
-                    f"API keys cleaned: {original_count} -> {len(valid_keys)} "
-                    f"(removed {len(invalid_keys)} invalid key(s))"
+                logger.warning(
+                    f"Removed {len(invalid_keys)} invalid API key(s). "
+                    f"Valid keys: {len(valid_keys)}/{original_count}"
                 )
 
                 if not valid_keys:
                     logger.error(
-                        "⚠️  All API keys are invalid! Please add valid Google API keys "
+                        "All API keys are invalid! Please add valid Google API keys "
                         "through the admin interface."
                     )
-            else:
-                logger.info(f"All {original_count} API key(s) are valid.")
 
         # 同样清理 VERTEX_API_KEYS
         if settings.VERTEX_API_KEYS:
@@ -431,13 +410,10 @@ async def sync_initial_settings():
             valid_keys, invalid_keys = _filter_valid_api_keys(settings.VERTEX_API_KEYS)
 
             if invalid_keys:
-                logger.warning(
-                    f"Found {len(invalid_keys)} invalid Vertex API key(s). Removing them automatically."
-                )
                 settings.VERTEX_API_KEYS = valid_keys
-                logger.info(
-                    f"Vertex API keys cleaned: {original_count} -> {len(valid_keys)} "
-                    f"(removed {len(invalid_keys)} invalid key(s))"
+                logger.warning(
+                    f"Removed {len(invalid_keys)} invalid Vertex API key(s). "
+                    f"Valid keys: {len(valid_keys)}/{original_count}"
                 )
 
         # 3. 将最终的内存 settings 同步回数据库
