@@ -12,17 +12,20 @@ logger = get_key_manager_logger()
 
 class KeyManager:
     def __init__(self, api_keys: list, vertex_api_keys: list):
-        self.api_keys = api_keys
-        self.vertex_api_keys = vertex_api_keys
-        self.key_cycle = cycle(api_keys)
-        self.vertex_key_cycle = cycle(vertex_api_keys)
+        self.api_keys = list(api_keys)
+        self.vertex_api_keys = list(vertex_api_keys)
+        # Shuffle only the order used for API call round-robin; keep original order for status/failure counts
+        self.key_cycle = cycle(random.sample(self.api_keys, len(self.api_keys)))
+        self.vertex_key_cycle = cycle(
+            random.sample(self.vertex_api_keys, len(self.vertex_api_keys))
+        )
         self.key_cycle_lock = asyncio.Lock()
         self.vertex_key_cycle_lock = asyncio.Lock()
         self.failure_count_lock = asyncio.Lock()
         self.vertex_failure_count_lock = asyncio.Lock()
-        self.key_failure_counts: Dict[str, int] = {key: 0 for key in api_keys}
+        self.key_failure_counts: Dict[str, int] = {key: 0 for key in self.api_keys}
         self.vertex_key_failure_counts: Dict[str, int] = {
-            key: 0 for key in vertex_api_keys
+            key: 0 for key in self.vertex_api_keys
         }
         self.MAX_FAILURES = settings.MAX_FAILURES
 
