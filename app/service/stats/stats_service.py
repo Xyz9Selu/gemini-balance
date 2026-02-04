@@ -299,6 +299,73 @@ class StatsService:
             )
             return []
 
+    async def get_keys_call_stats(
+        self, keys: list[str], period: str = "24h"
+    ) -> dict[str, dict[str, int]]:
+        """
+        Get call_count and success_count per key for the given period (from RequestLog).
+
+        Args:
+            keys: List of API keys to get stats for.
+            period: Time period ('1h', '8h', '24h').
+
+        Returns:
+            {key: {"call_count": int, "success_count": int}}
+        """
+        if not keys:
+            return {}
+        now = datetime.datetime.now()
+        if period == "1h":
+            start_time = now - datetime.timedelta(hours=1)
+        elif period == "8h":
+            start_time = now - datetime.timedelta(hours=8)
+        elif period == "24h":
+            start_time = now - datetime.timedelta(hours=24)
+        else:
+            start_time = now - datetime.timedelta(hours=24)
+
+        try:
+            query = (
+                select(
+                    RequestLog.api_key.label("key"),
+                    func.count(RequestLog.id).label("call_count"),
+                    func.sum(
+                        case(
+                            (
+                                and_(
+                                    RequestLog.status_code >= 200,
+                                    RequestLog.status_code < 300,
+                                ),
+                                1,
+                            ),
+                            else_=0,
+                        )
+                    ).label("success_count"),
+                )
+                .where(
+                    RequestLog.request_time >= start_time,
+                    RequestLog.api_key.isnot(None),
+                    RequestLog.api_key.in_(keys),
+                )
+                .group_by(RequestLog.api_key)
+            )
+            rows = await database.fetch_all(query)
+            result = {}
+            for row in rows:
+                if row["key"]:
+                    result[row["key"]] = {
+                        "call_count": row["call_count"] or 0,
+                        "success_count": int(row["success_count"] or 0),
+                    }
+            # Ensure all keys have an entry (default 0 for keys with no logs)
+            for key in keys:
+                if key not in result:
+                    result[key] = {"call_count": 0, "success_count": 0}
+            return result
+        except Exception as e:
+            logger.error(f"Failed to get keys call stats: {e}")
+            return {k: {"call_count": 0, "success_count": 0} for k in keys}
+
     async def get_key_usage_details_last_24h(self, key: str) -> Union[dict, None]:
         """
         获取指定 API 密钥在过去 24 小时内按模型统计的调用次数。

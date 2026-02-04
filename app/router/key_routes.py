@@ -1,9 +1,11 @@
 from fastapi import APIRouter, Depends, Request
 from app.service.key.key_manager import KeyManager, get_key_manager_instance
+from app.service.stats.stats_service import StatsService
 from app.core.security import verify_auth_token
 from fastapi.responses import JSONResponse
 
 router = APIRouter()
+stats_service = StatsService()
 
 @router.get("/api/keys")
 async def get_keys_paginated(
@@ -55,8 +57,21 @@ async def get_keys_paginated(
     end_index = start_index + limit
     paginated_keys = dict(keys_list[start_index:end_index])
 
+    # Enrich with call_count and success_count from RequestLog (last 24h)
+    call_stats = await stats_service.get_keys_call_stats(
+        list(paginated_keys.keys()), "24h"
+    )
+    enriched_keys = {}
+    for key, fail_count in paginated_keys.items():
+        stats = call_stats.get(key, {"call_count": 0, "success_count": 0})
+        enriched_keys[key] = {
+            "fail_count": fail_count,
+            "call_count": stats["call_count"],
+            "success_count": stats["success_count"],
+        }
+
     return {
-        "keys": paginated_keys,
+        "keys": enriched_keys,
         "total_items": total_items,
         "total_pages": (total_items + limit - 1) // limit,
         "current_page": page,
