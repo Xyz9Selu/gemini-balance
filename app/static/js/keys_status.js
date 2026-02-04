@@ -1232,8 +1232,8 @@ async function fetchAndDisplayKeys(type, page = 1) {
 
         const keys = data.keys || {};
         if (Object.keys(keys).length > 0) {
-            Object.entries(keys).forEach(([key, fail_count]) => {
-                const listItem = createKeyListItem(key, fail_count, type);
+            Object.entries(keys).forEach(([key, keyData]) => {
+                const listItem = createKeyListItem(key, keyData, type);
                 listElement.appendChild(listItem);
             });
         } else {
@@ -1253,11 +1253,15 @@ async function fetchAndDisplayKeys(type, page = 1) {
 /**
  * Creates a single key list item element.
  * @param {string} key The API key.
- * @param {number} fail_count The failure count for the key.
+ * @param {object|number} keyData Object with fail_count, call_count, success_count; or legacy number (fail_count only).
  * @param {string} type 'valid' or 'invalid'.
  * @returns {HTMLElement} The created list item element.
  */
-function createKeyListItem(key, fail_count, type) {
+function createKeyListItem(key, keyData, type) {
+    const fail_count = typeof keyData === 'object' ? (keyData.fail_count ?? 0) : (keyData ?? 0);
+    const call_count = typeof keyData === 'object' ? (keyData.call_count ?? 0) : 0;
+    const success_count = typeof keyData === 'object' ? (keyData.success_count ?? 0) : 0;
+
     const li = document.createElement("li");
     li.className = `bg-white rounded-lg p-3 shadow-sm hover:shadow-md transition-all duration-300 border ${type === 'valid' ? 'hover:border-success-300' : 'hover:border-danger-300'} transform hover:-translate-y-1`;
     li.dataset.key = key;
@@ -1269,20 +1273,21 @@ function createKeyListItem(key, fail_count, type) {
 
     li.innerHTML = `
         <input type="checkbox" class="form-checkbox h-5 w-5 text-primary-600 border-gray-300 rounded focus:ring-primary-500 mt-1 key-checkbox" data-key-type="${type}" value="${key}">
-        <div class="flex-grow">
-            <div class="flex flex-col justify-between h-full gap-3">
+        <div class="flex-grow min-w-0">
+            <div class="flex flex-col justify-between h-full gap-2">
                 <div class="flex flex-wrap items-center gap-2">
                     ${statusBadge}
-                    <div class="flex items-center gap-1">
-                        <span class="key-text font-mono" data-full-key="${key}">${key.substring(0, 4)}...${key.substring(key.length - 4)}</span>
-                        <button class="text-gray-500 hover:text-primary-600 transition-colors" onclick="toggleKeyVisibility(this)" title="Show/Hide Key">
+                    <div class="flex items-center gap-1 min-w-0">
+                        <span class="key-text font-mono truncate" data-full-key="${key}">${key.substring(0, 4)}...${key.substring(key.length - 4)}</span>
+                        <button class="flex-shrink-0 text-gray-500 hover:text-primary-600 transition-colors" onclick="toggleKeyVisibility(this)" title="Show/Hide Key">
                             <i class="fas fa-eye"></i>
                         </button>
                     </div>
-                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-600">
-                        <i class="fas fa-exclamation-triangle mr-1"></i>
-                        失败: ${fail_count}
-                    </span>
+                </div>
+                <div class="key-stats-bar flex items-center gap-4 px-2.5 py-1.5 rounded-md text-xs" title="24h 调用统计 · 失败为运行时计数">
+                    <span class="key-stat key-stat-call"><i class="fas fa-chart-line mr-1.5 opacity-70"></i><span class="font-semibold">${call_count}</span> 调用</span>
+                    <span class="key-stat key-stat-success"><i class="fas fa-check-circle mr-1.5 opacity-70"></i><span class="font-semibold">${success_count}</span> 成功</span>
+                    <span class="key-stat key-stat-fail"><i class="fas fa-exclamation-triangle mr-1.5 opacity-70"></i><span class="font-semibold">${fail_count}</span> 失败</span>
                 </div>
                 <div class="flex flex-wrap items-center gap-2">
                     <button class="flex items-center gap-1 bg-success-600 hover:bg-success-700 text-white px-2.5 py-1 rounded-lg text-xs font-medium transition-all duration-200" onclick="verifyKey('${key}', this)"><i class="fas fa-check-circle"></i> 验证</button>

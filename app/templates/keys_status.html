@@ -1021,19 +1021,20 @@ endblock %} {% block head_extra_styles %}
     text-shadow: none !important; /* Remove any text shadow */
   }
 
-  /* 失败计数标签 (黄色) - 改为更好的对比度 */
-  #validKeys li span.bg-amber-50.text-amber-600,
-  #invalidKeys li span.bg-amber-50.text-amber-600 {
-    background-color: rgba(251, 191, 36, 0.15) !important; /* amber-400 with low opacity */
-    color: #d97706 !important; /* amber-600 for better contrast on light background */
-    border: 1px solid rgba(217, 119, 6, 0.3) !important; /* amber-600 border */
-    position: absolute; /* 移动到右下角 */
-    bottom: 0.75rem; /* 配合li的p-3内边距 */
-    right: 0.75rem;
-    z-index: 5; /* 确保在其他元素之上 */
-    font-weight: 600 !important; /* Make text bolder for better readability */
-    text-shadow: none !important; /* Remove any text shadow */
+  /* 密钥统计栏 - 调用/成功/失败 */
+  .key-stats-bar {
+    background: linear-gradient(135deg, rgba(243, 244, 246, 0.9) 0%, rgba(249, 250, 251, 0.95) 100%);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    color: #4b5563;
   }
+  #validKeys li .key-stats-bar,
+  #invalidKeys li .key-stats-bar {
+    background: rgba(243, 244, 246, 0.8) !important;
+    border-color: rgba(0, 0, 0, 0.06) !important;
+  }
+  .key-stat-call { color: #2563eb !important; }
+  .key-stat-success { color: #16a34a !important; }
+  .key-stat-fail { color: #d97706 !important; }
 
   /* 无效标签 (红色) - for invalidKeys list */
   #invalidKeys li span.bg-danger-50.text-danger-600 {
