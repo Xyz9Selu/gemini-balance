@@ -1111,6 +1111,24 @@ endblock %} {% block head_extra_styles %}
             class="w-full px-4 py-3 rounded-lg form-input-themed"
           />
         </div>
+
+        <!-- 重试间隔 -->
+        <div class="mb-6">
+          <label
+            for="RETRY_SLEEP_SECONDS"
+            class="block font-semibold mb-2 text-gray-700"
+            >重试间隔（秒）
+            <i class="fas fa-question-circle text-gray-400 ml-1 cursor-help" title="每次重试前等待的秒数，用于缓解限流"></i>
+          </label>
+          <input
+            type="number"
+            id="RETRY_SLEEP_SECONDS"
+            name="RETRY_SLEEP_SECONDS"
+            min="0"
+            max="60"
+            class="w-full px-4 py-3 rounded-lg form-input-themed"
+          />
+        </div>
       </div>
 
       <!-- 模型相关配置 -->

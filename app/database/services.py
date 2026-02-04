@@ -538,6 +538,119 @@ async def add_request_log(
         return False
 
 
+async def get_request_logs(
+    limit: int,
+    offset: int,
+    key_search: Optional[str] = None,
+    model_search: Optional[str] = None,
+    is_success_filter: Optional[bool] = None,
+    status_code_search: Optional[str] = None,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    sort_by: str = "id",
+    sort_order: str = "desc",
+) -> List[Dict[str, Any]]:
+    """
+    获取请求日志列表, 支持搜索、日期过滤和排序
+
+    Args:
+        limit: 限制数量
+        offset: 偏移量
+        key_search: API密钥搜索词 (模糊匹配)
+        model_search: 模型名称搜索词 (模糊匹配)
+        is_success_filter: 是否成功过滤 (True=成功, False=失败)
+        status_code_search: 状态码搜索 (精确匹配)
+        start_date: 开始日期时间
+        end_date: 结束日期时间
+        sort_by: 排序字段
+        sort_order: 排序顺序 ('asc' or 'desc')
+
+    Returns:
+        List[Dict[str, Any]]: 请求日志列表
+    """
+    try:
+        query = select(
+            RequestLog.id,
+            RequestLog.api_key,
+            RequestLog.model_name,
+            RequestLog.is_success,
+            RequestLog.status_code,
+            RequestLog.latency_ms,
+            RequestLog.request_time,
+        )
+
+        if key_search:
+            query = query.where(RequestLog.api_key.ilike(f"%{key_search}%"))
+        if model_search:
+            query = query.where(RequestLog.model_name.ilike(f"%{model_search}%"))
+        if is_success_filter is not None:
+            query = query.where(RequestLog.is_success == is_success_filter)
+        if start_date:
+            query = query.where(RequestLog.request_time >= start_date)
+        if end_date:
+            query = query.where(RequestLog.request_time < end_date)
+        if status_code_search:
+            try:
+                status_code_int = int(status_code_search)
+                query = query.where(RequestLog.status_code == status_code_int)
+            except ValueError:
+                logger.warning(
+                    f"Invalid format for status_code_search: '{status_code_search}'. Skipping."
+                )
+
+        sort_column = getattr(RequestLog, sort_by, RequestLog.id)
+        if sort_order.lower() == "asc":
+            query = query.order_by(asc(sort_column))
+        else:
+            query = query.order_by(desc(sort_column))
+
+        query = query.limit(limit).offset(offset)
+
+        result = await database.fetch_all(query)
+        return [dict(row) for row in result]
+    except Exception as e:
+        logger.exception(f"Failed to get request logs with filters: {str(e)}")
+        raise
+
+
+async def get_request_logs_count(
+    key_search: Optional[str] = None,
+    model_search: Optional[str] = None,
+    is_success_filter: Optional[bool] = None,
+    status_code_search: Optional[str] = None,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+) -> int:
+    """
+    获取符合条件的请求日志总数
+    """
+    try:
+        query = select(func.count()).select_from(RequestLog)
+
+        if key_search:
+            query = query.where(RequestLog.api_key.ilike(f"%{key_search}%"))
+        if model_search:
+            query = query.where(RequestLog.model_name.ilike(f"%{model_search}%"))
+        if is_success_filter is not None:
+            query = query.where(RequestLog.is_success == is_success_filter)
+        if start_date:
+            query = query.where(RequestLog.request_time >= start_date)
+        if end_date:
+            query = query.where(RequestLog.request_time < end_date)
+        if status_code_search:
+            try:
+                status_code_int = int(status_code_search)
+                query = query.where(RequestLog.status_code == status_code_int)
+            except ValueError:
+                pass
+
+        count_result = await database.fetch_one(query)
+        return count_result[0] if count_result else 0
+    except Exception as e:
+        logger.exception(f"Failed to count request logs with filters: {str(e)}")
+        raise
+
+
 # ==================== 文件记录相关函数 ====================
 
 

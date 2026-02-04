@@ -743,6 +743,20 @@ endblock %} {% block head_extra_styles %}
     justify-content: center !important;
     text-align: center !important;
   }
+
+  /* Tab styles */
+  .log-tab {
+    background-color: rgba(229, 231, 235, 0.8);
+    color: #374151;
+  }
+  .log-tab:hover {
+    background-color: rgba(209, 213, 219, 0.9);
+    color: #1f2937;
+  }
+  .log-tab.active {
+    background-color: #3b82f6 !important;
+    color: #ffffff !important;
+  }
 </style>
 {% endblock %} {% block content %}
 <div class="container mx-auto px-4">
@@ -801,95 +815,179 @@ endblock %} {% block head_extra_styles %}
         border: 1px solid rgba(0, 0, 0, 0.08);
       "
     >
-      <h2
-        class="text-xl font-bold mb-6 pb-3 border-b flex items-center gap-2 text-gray-100 border-violet-300 border-opacity-30"
-      >
-        <i class="fas fa-bug text-violet-400"></i> 错误日志列表
-      </h2>
-
-      <!-- 搜索与操作控件 -->
-      <div
-        class="grid grid-cols-1 lg:grid-cols-[1fr_auto] items-center gap-4 mb-6 mobile-buttons-container"
-      >
-        <div
-          class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 w-full mobile-search-controls"
+      <!-- Tab 切换 -->
+      <div class="flex gap-2 mb-6 border-b border-gray-200 pb-4">
+        <button
+          type="button"
+          id="tabErrors"
+          class="log-tab px-4 py-2 rounded-lg font-medium transition-all"
+          data-tab="errors"
         >
-          <input
-            type="text"
-            id="keySearch"
-            placeholder="搜索密钥 (部分)"
-            class="px-3 py-1 rounded-lg form-input-themed"
-          />
-          <input
-            type="text"
-            id="errorSearch"
-            placeholder="搜索错误类型/日志"
-            class="px-3 py-1 rounded-lg form-input-themed"
-          />
-          <input
-            type="text"
-            id="errorCodeSearch"
-            placeholder="搜索错误码"
-            class="px-3 py-1 rounded-lg form-input-themed"
-          />
+          <i class="fas fa-exclamation-triangle mr-2"></i>错误记录
+        </button>
+        <button
+          type="button"
+          id="tabAll"
+          class="log-tab px-4 py-2 rounded-lg font-medium transition-all"
+          data-tab="all"
+        >
+          <i class="fas fa-list mr-2"></i>全部记录
+        </button>
+      </div>
+
+      <!-- 搜索与操作控件 (错误记录) -->
+      <div id="errorTabControls" class="mb-6">
+        <div
+          class="grid grid-cols-1 lg:grid-cols-[1fr_auto] items-center gap-4 mobile-buttons-container"
+        >
           <div
-            class="grid grid-cols-1 sm:grid-cols-2 gap-2 col-span-1 sm:col-span-2 lg:col-span-3 mt-2"
+            class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 w-full mobile-search-controls"
           >
-            <div class="flex items-center gap-2">
-              <label class="text-sm text-gray-300 whitespace-nowrap"
-                >开始时间:</label
-              >
-              <input
-                type="datetime-local"
-                id="startDate"
-                class="px-3 py-1 rounded-lg text-sm w-full form-input-themed"
-              />
-            </div>
-            <div class="flex items-center gap-2">
-              <label class="text-sm text-gray-300 whitespace-nowrap"
-                >结束时间:</label
-              >
-              <input
-                type="datetime-local"
-                id="endDate"
-                class="px-3 py-1 rounded-lg text-sm w-full form-input-themed"
-              />
+            <input
+              type="text"
+              id="keySearch"
+              placeholder="搜索密钥 (部分)"
+              class="px-3 py-1 rounded-lg form-input-themed"
+            />
+            <input
+              type="text"
+              id="errorSearch"
+              placeholder="搜索错误类型/日志"
+              class="px-3 py-1 rounded-lg form-input-themed"
+            />
+            <input
+              type="text"
+              id="errorCodeSearch"
+              placeholder="搜索错误码"
+              class="px-3 py-1 rounded-lg form-input-themed"
+            />
+            <div
+              class="grid grid-cols-1 sm:grid-cols-2 gap-2 col-span-1 sm:col-span-2 lg:col-span-3 mt-2"
+            >
+              <div class="flex items-center gap-2">
+                <label class="text-sm text-gray-300 whitespace-nowrap"
+                  >开始时间:</label
+                >
+                <input
+                  type="datetime-local"
+                  id="startDate"
+                  class="px-3 py-1 rounded-lg text-sm w-full form-input-themed"
+                />
+              </div>
+              <div class="flex items-center gap-2">
+                <label class="text-sm text-gray-300 whitespace-nowrap"
+                  >结束时间:</label
+                >
+                <input
+                  type="datetime-local"
+                  id="endDate"
+                  class="px-3 py-1 rounded-lg text-sm w-full form-input-themed"
+                />
+              </div>
             </div>
           </div>
-        </div>
-        <div class="flex items-center gap-3 flex-shrink-0 buttons-container-responsive">
-          <button
-            id="searchBtn"
-            class="flex items-center justify-center px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-all duration-200 shadow-sm hover:shadow-md whitespace-nowrap"
-          >
-            <i class="fas fa-search mr-1.5"></i>搜索
-          </button>
-          <button
-            id="copySelectedKeysBtn"
-            class="flex items-center justify-center px-4 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-lg font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md whitespace-nowrap"
-            disabled
-          >
-            <i class="far fa-copy mr-1.5"></i>复制
-          </button>
-          <button
-            id="deleteSelectedBtn"
-            class="flex items-center justify-center px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md whitespace-nowrap"
-            disabled
-          >
-            <i class="fas fa-trash-alt mr-1.5"></i>删除
-          </button>
-          <button
-            id="deleteAllLogsBtn"
-            class="flex items-center justify-center px-4 py-1.5 bg-red-700 hover:bg-red-800 text-white rounded-lg font-medium transition-all duration-200 shadow-sm hover:shadow-md whitespace-nowrap"
-            title="清空所有错误日志"
-          >
-            <i class="fas fa-dumpster-fire mr-1.5"></i>清空全部
-          </button>
+          <div class="flex items-center gap-3 flex-shrink-0 buttons-container-responsive">
+            <button
+              id="searchBtn"
+              class="flex items-center justify-center px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-all duration-200 shadow-sm hover:shadow-md whitespace-nowrap"
+            >
+              <i class="fas fa-search mr-1.5"></i>搜索
+            </button>
+            <button
+              id="copySelectedKeysBtn"
+              class="flex items-center justify-center px-4 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-lg font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md whitespace-nowrap"
+              disabled
+            >
+              <i class="far fa-copy mr-1.5"></i>复制
+            </button>
+            <button
+              id="deleteSelectedBtn"
+              class="flex items-center justify-center px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md whitespace-nowrap"
+              disabled
+            >
+              <i class="fas fa-trash-alt mr-1.5"></i>删除
+            </button>
+            <button
+              id="deleteAllLogsBtn"
+              class="flex items-center justify-center px-4 py-1.5 bg-red-700 hover:bg-red-800 text-white rounded-lg font-medium transition-all duration-200 shadow-sm hover:shadow-md whitespace-nowrap"
+              title="清空所有错误日志"
+            >
+              <i class="fas fa-dumpster-fire mr-1.5"></i>清空全部
+            </button>
+          </div>
         </div>
       </div>
 
-      <!-- 表格容器 -->
+      <!-- 搜索与操作控件 (全部记录) -->
+      <div id="allTabControls" class="mb-6 hidden">
+        <div
+          class="grid grid-cols-1 lg:grid-cols-[1fr_auto] items-center gap-4 mobile-buttons-container"
+        >
+          <div
+            class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 w-full mobile-search-controls"
+          >
+            <input
+              type="text"
+              id="allKeySearch"
+              placeholder="搜索密钥 (部分)"
+              class="px-3 py-1 rounded-lg form-input-themed"
+            />
+            <input
+              type="text"
+              id="modelSearch"
+              placeholder="搜索模型名称"
+              class="px-3 py-1 rounded-lg form-input-themed"
+            />
+            <select id="isSuccessFilter" class="px-3 py-1 rounded-lg form-input-themed">
+              <option value="">全部</option>
+              <option value="true">成功</option>
+              <option value="false">失败</option>
+            </select>
+            <input
+              type="text"
+              id="statusCodeSearch"
+              placeholder="状态码"
+              class="px-3 py-1 rounded-lg form-input-themed"
+            />
+            <div
+              class="grid grid-cols-1 sm:grid-cols-2 gap-2 col-span-1 sm:col-span-2 lg:col-span-4 mt-2"
+            >
+              <div class="flex items-center gap-2">
+                <label class="text-sm text-gray-300 whitespace-nowrap"
+                  >开始时间:</label
+                >
+                <input
+                  type="datetime-local"
+                  id="allStartDate"
+                  class="px-3 py-1 rounded-lg text-sm w-full form-input-themed"
+                />
+              </div>
+              <div class="flex items-center gap-2">
+                <label class="text-sm text-gray-300 whitespace-nowrap"
+                  >结束时间:</label
+                >
+                <input
+                  type="datetime-local"
+                  id="allEndDate"
+                  class="px-3 py-1 rounded-lg text-sm w-full form-input-themed"
+                />
+              </div>
+            </div>
+          </div>
+          <div class="flex items-center gap-3 flex-shrink-0 buttons-container-responsive">
+            <button
+              id="allSearchBtn"
+              class="flex items-center justify-center px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-all duration-200 shadow-sm hover:shadow-md whitespace-nowrap"
+            >
+              <i class="fas fa-search mr-1.5"></i>搜索
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 表格容器 (错误记录) -->
       <div
+        id="errorTableWrapper"
         class="overflow-x-auto rounded-lg border mb-6"
         style="border-color: rgba(0, 0, 0, 0.12)"
       >
@@ -929,6 +1027,43 @@ endblock %} {% block head_extra_styles %}
             style="border-color: rgba(0, 0, 0, 0.08)"
           >
             <!-- 错误日志数据将通过JavaScript动态加载 -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 表格容器 (全部记录) -->
+      <div
+        id="allTableWrapper"
+        class="overflow-x-auto rounded-lg border mb-6 hidden"
+        style="border-color: rgba(0, 0, 0, 0.12)"
+      >
+        <table class="styled-table w-full min-w-full text-sm">
+          <thead>
+            <tr class="text-left">
+              <th
+                class="px-5 py-3 font-semibold rounded-tl-lg text-gray-700 cursor-pointer"
+                id="allSortById"
+              >
+                ID <i class="fas fa-sort ml-1"></i>
+              </th>
+              <th class="px-5 py-3 font-semibold text-gray-700">API密钥</th>
+              <th class="px-5 py-3 font-semibold text-gray-700">模型名称</th>
+              <th class="px-5 py-3 font-semibold text-gray-700">成功/失败</th>
+              <th class="px-5 py-3 font-semibold text-gray-700">状态码</th>
+              <th class="px-5 py-3 font-semibold text-gray-700">耗时(ms)</th>
+              <th
+                class="px-5 py-3 font-semibold text-gray-700 rounded-tr-lg"
+              >
+                请求时间
+              </th>
+            </tr>
+          </thead>
+          <tbody
+            id="allLogsTable"
+            class="divide-y"
+            style="border-color: rgba(0, 0, 0, 0.08)"
+          >
+            <!-- 全部记录数据将通过JavaScript动态加载 -->
           </tbody>
         </table>
       </div>

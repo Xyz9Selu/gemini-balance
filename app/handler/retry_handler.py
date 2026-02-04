@@ -1,4 +1,4 @@
-
+import asyncio
 from functools import wraps
 from typing import Callable, TypeVar
 
@@ -42,6 +42,13 @@ class RetryHandler:
                         else:
                             logger.error(f"No valid API key available after {retries} retries.")
                             break
+
+                    # Sleep before retry (skip on last attempt)
+                    if retries < settings.MAX_RETRIES and settings.RETRY_SLEEP_SECONDS > 0:
+                        logger.info(
+                            f"Waiting {settings.RETRY_SLEEP_SECONDS}s before retry {retries + 1}/{settings.MAX_RETRIES}"
+                        )
+                        await asyncio.sleep(settings.RETRY_SLEEP_SECONDS)
 
             logger.error(
                 f"All retry attempts failed, raising final exception: {str(last_exception)}"
