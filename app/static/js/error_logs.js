@@ -81,6 +81,25 @@ let errorLogState = {
   },
 };
 
+// 全部记录 Tab 状态
+let requestLogState = {
+  currentPage: 1,
+  pageSize: 10,
+  logs: [],
+  sort: { field: "id", order: "desc" },
+  search: {
+    key: "",
+    model: "",
+    isSuccess: null, // null=all, true=success, false=failure
+    statusCode: "",
+    startDate: "",
+    endDate: "",
+  },
+};
+
+// 当前激活的 Tab: "errors" (默认) | "all"
+let activeTab = "errors";
+
 // DOM Elements Cache
 let pageSizeSelector;
 // let refreshBtn; // Removed, as the button is deleted
@@ -113,6 +132,21 @@ let deleteConfirmMessage; // 新增：删除确认消息元素
 let idsToDeleteGlobally = []; // 新增：存储待删除的ID
 let currentConfirmCallback = null; // 新增：存储当前的确认回调
 let deleteAllLogsBtn; // 新增：清空全部按钮
+let tabErrorsBtn;
+let tabAllBtn;
+let errorTabControls;
+let allTabControls;
+let errorTableWrapper;
+let allTableWrapper;
+let allLogsTableBody;
+let allSearchBtn;
+let allKeySearchInput;
+let modelSearchInput;
+let isSuccessFilterSelect;
+let statusCodeSearchInput;
+let allStartDateInput;
+let allEndDateInput;
+let allSortByIdHeader;
 
 // Helper functions for initialization
 function cacheDOMElements() {
@@ -150,17 +184,123 @@ function cacheDOMElements() {
   confirmDeleteBtn = document.getElementById("confirmDeleteBtn");
   deleteConfirmMessage = document.getElementById("deleteConfirmMessage");
   deleteAllLogsBtn = document.getElementById("deleteAllLogsBtn"); // 缓存清空全部按钮
- }
+  tabErrorsBtn = document.getElementById("tabErrors");
+  tabAllBtn = document.getElementById("tabAll");
+  errorTabControls = document.getElementById("errorTabControls");
+  allTabControls = document.getElementById("allTabControls");
+  errorTableWrapper = document.getElementById("errorTableWrapper");
+  allTableWrapper = document.getElementById("allTableWrapper");
+  allLogsTableBody = document.getElementById("allLogsTable");
+  allSearchBtn = document.getElementById("allSearchBtn");
+  allKeySearchInput = document.getElementById("allKeySearch");
+  modelSearchInput = document.getElementById("modelSearch");
+  isSuccessFilterSelect = document.getElementById("isSuccessFilter");
+  statusCodeSearchInput = document.getElementById("statusCodeSearch");
+  allStartDateInput = document.getElementById("allStartDate");
+  allEndDateInput = document.getElementById("allEndDate");
+  allSortByIdHeader = document.getElementById("allSortById");
+}
   
- function initializePageSizeControls() {
+function getTabFromURL() {
+  const params = new URLSearchParams(window.location.search);
+  const tab = params.get("tab");
+  return tab === "all" ? "all" : "errors";
+}
+
+function updateURLWithTab(tab) {
+  const url = new URL(window.location.href);
+  if (tab === "errors") {
+    url.searchParams.delete("tab");
+  } else {
+    url.searchParams.set("tab", tab);
+  }
+  window.history.replaceState({}, "", url.toString());
+}
+
+function switchTab(tab) {
+  activeTab = tab;
+  updateURLWithTab(tab);
+
+  // Update tab button styles
+  if (tabErrorsBtn) tabErrorsBtn.classList.toggle("active", tab === "errors");
+  if (tabAllBtn) tabAllBtn.classList.toggle("active", tab === "all");
+
+  // Show/hide controls and tables
+  if (errorTabControls) errorTabControls.classList.toggle("hidden", tab !== "errors");
+  if (allTabControls) allTabControls.classList.toggle("hidden", tab !== "all");
+  if (errorTableWrapper) errorTableWrapper.classList.toggle("hidden", tab !== "errors");
+  if (allTableWrapper) allTableWrapper.classList.toggle("hidden", tab !== "all");
+
+  if (tab === "errors") {
+    loadErrorLogs();
+  } else {
+    loadRequestLogs();
+  }
+}
+
+function initializeTabControls() {
+  activeTab = getTabFromURL();
+  if (tabErrorsBtn) {
+    tabErrorsBtn.classList.toggle("active", activeTab === "errors");
+    tabErrorsBtn.addEventListener("click", () => switchTab("errors"));
+  }
+  if (tabAllBtn) {
+    tabAllBtn.classList.toggle("active", activeTab === "all");
+    tabAllBtn.addEventListener("click", () => switchTab("all"));
+  }
+  if (allSearchBtn) {
+    allSearchBtn.addEventListener("click", function () {
+      requestLogState.search.key = allKeySearchInput ? allKeySearchInput.value.trim() : "";
+      requestLogState.search.model = modelSearchInput ? modelSearchInput.value.trim() : "";
+      const isVal = isSuccessFilterSelect ? isSuccessFilterSelect.value : "";
+      requestLogState.search.isSuccess = isVal === "true" ? true : isVal === "false" ? false : null;
+      requestLogState.search.statusCode = statusCodeSearchInput ? statusCodeSearchInput.value.trim() : "";
+      requestLogState.search.startDate = allStartDateInput ? allStartDateInput.value : "";
+      requestLogState.search.endDate = allEndDateInput ? allEndDateInput.value : "";
+      requestLogState.currentPage = 1;
+      loadRequestLogs();
+    });
+  }
+  if (allSortByIdHeader) {
+    allSortByIdHeader.addEventListener("click", function () {
+      if (requestLogState.sort.field === "id") {
+        requestLogState.sort.order = requestLogState.sort.order === "asc" ? "desc" : "asc";
+      } else {
+        requestLogState.sort.field = "id";
+        requestLogState.sort.order = "desc";
+      }
+      requestLogState.currentPage = 1;
+      loadRequestLogs();
+    });
+  }
+
+  // 初始显示状态
+  if (tabErrorsBtn) tabErrorsBtn.classList.toggle("active", activeTab === "errors");
+  if (tabAllBtn) tabAllBtn.classList.toggle("active", activeTab === "all");
+  if (errorTabControls) errorTabControls.classList.toggle("hidden", activeTab !== "errors");
+  if (allTabControls) allTabControls.classList.toggle("hidden", activeTab !== "all");
+  if (errorTableWrapper) errorTableWrapper.classList.toggle("hidden", activeTab !== "errors");
+  if (allTableWrapper) allTableWrapper.classList.toggle("hidden", activeTab !== "all");
+}
+
+function initializePageSizeControls() {
   if (pageSizeSelector) {
     pageSizeSelector.value = errorLogState.pageSize;
     pageSizeSelector.addEventListener("change", function () {
-      errorLogState.pageSize = parseInt(this.value);
-      errorLogState.currentPage = 1; // Reset to first page
-      loadErrorLogs();
+      const newSize = parseInt(this.value);
+      errorLogState.pageSize = newSize;
+      requestLogState.pageSize = newSize;
+      errorLogState.currentPage = 1;
+      requestLogState.currentPage = 1;
+      if (activeTab === "errors") loadErrorLogs();
+      else loadRequestLogs();
     });
   }
+}
+
+function loadCurrentTabData() {
+  if (activeTab === "errors") loadErrorLogs();
+  else loadRequestLogs();
 }
 
 function initializeSearchControls() {
@@ -281,17 +421,17 @@ function initializeActionControls() {
  // 页面加载完成后执行
 document.addEventListener("DOMContentLoaded", function () {
   cacheDOMElements();
+  initializeTabControls();
   initializePageSizeControls();
   initializeSearchControls();
   initializeModalControls();
   initializePaginationJumpControls();
   initializeActionControls();
 
-  // Initial load of error logs
-  loadErrorLogs();
+  // Initial load based on active tab (default: errors)
+  loadCurrentTabData();
 
   // Add event listeners for copy buttons inside the modal and table
-  // This needs to be called after initial render and potentially after each render if content is dynamic
   setupCopyButtons();
 });
 
@@ -732,7 +872,7 @@ async function loadErrorLogs() {
     if (data && Array.isArray(data.logs)) {
       errorLogState.logs = data.logs; // Store the list data (contains error_code)
       renderErrorLogs(errorLogState.logs);
-      updatePagination(errorLogState.logs.length, data.total || -1); // Use total from response
+      updatePaginationForTab(errorLogState.logs.length, data.total || -1, errorLogState);
     } else {
       // Handle unexpected data format even after successful fetch
       console.error("Unexpected API response format:", data);
@@ -742,13 +882,202 @@ async function loadErrorLogs() {
     showLoading(false);
 
     if (errorLogState.logs.length === 0) {
-      showNoData(true);
+      showNoData(true, "暂无错误日志数据");
     }
   } catch (error) {
     console.error("获取错误日志失败:", error);
     showLoading(false);
     showError(true, error.message); // Show specific error message
   }
+}
+
+// 加载请求日志数据 (全部记录)
+async function loadRequestLogs() {
+  showLoading(true);
+  showError(false);
+  showNoData(false);
+
+  const offset = (requestLogState.currentPage - 1) * requestLogState.pageSize;
+
+  try {
+    let apiUrl = `/api/logs/requests?limit=${requestLogState.pageSize}&offset=${offset}`;
+    apiUrl += `&sort_by=${requestLogState.sort.field}&sort_order=${requestLogState.sort.order}`;
+
+    if (requestLogState.search.key) {
+      apiUrl += `&key_search=${encodeURIComponent(requestLogState.search.key)}`;
+    }
+    if (requestLogState.search.model) {
+      apiUrl += `&model_search=${encodeURIComponent(requestLogState.search.model)}`;
+    }
+    if (requestLogState.search.isSuccess !== null) {
+      apiUrl += `&is_success=${requestLogState.search.isSuccess}`;
+    }
+    if (requestLogState.search.statusCode) {
+      apiUrl += `&status_code_search=${encodeURIComponent(requestLogState.search.statusCode)}`;
+    }
+    if (requestLogState.search.startDate) {
+      apiUrl += `&start_date=${encodeURIComponent(requestLogState.search.startDate)}`;
+    }
+    if (requestLogState.search.endDate) {
+      apiUrl += `&end_date=${encodeURIComponent(requestLogState.search.endDate)}`;
+    }
+
+    const data = await fetchAPI(apiUrl);
+
+    if (data && Array.isArray(data.logs)) {
+      requestLogState.logs = data.logs;
+      renderRequestLogs(requestLogState.logs);
+      updatePaginationForTab(
+        requestLogState.logs.length,
+        data.total || -1,
+        requestLogState
+      );
+    } else {
+      console.error("Unexpected API response format:", data);
+      throw new Error("无法识别的API响应格式");
+    }
+
+    showLoading(false);
+
+    if (requestLogState.logs.length === 0) {
+      showNoData(true, "暂无请求记录");
+    }
+  } catch (error) {
+    console.error("获取请求日志失败:", error);
+    showLoading(false);
+    showError(true, error.message);
+  }
+}
+
+// 渲染请求日志表格 (全部记录)
+function renderRequestLogs(logs) {
+  if (!allLogsTableBody) return;
+
+  allLogsTableBody.innerHTML = "";
+
+  if (!logs || logs.length === 0) return;
+
+  const startIndex = (requestLogState.currentPage - 1) * requestLogState.pageSize;
+
+  const maskKey = (key) => {
+    if (!key || key.length < 8) return key || "无";
+    return `${key.substring(0, 4)}...${key.substring(key.length - 4)}`;
+  };
+
+  logs.forEach((log, index) => {
+    let formattedTime = "N/A";
+    try {
+      const requestTime = new Date(log.request_time);
+      if (!isNaN(requestTime)) {
+        formattedTime = requestTime.toLocaleString("zh-CN", {
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hour12: false,
+        });
+      }
+    } catch (e) {
+      console.error("Error formatting date:", e);
+    }
+
+    const sequentialId = startIndex + index + 1;
+    const successText = log.is_success ? "成功" : "失败";
+    const successClass = log.is_success ? "text-green-600" : "text-red-600";
+
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td class="text-gray-700">${sequentialId}</td>
+      <td class="text-gray-700" title="${log.api_key || ""}">${maskKey(log.api_key)}</td>
+      <td class="text-gray-700">${log.model_name || "无"}</td>
+      <td class="${successClass} font-medium">${successText}</td>
+      <td class="text-gray-700">${log.status_code ?? "无"}</td>
+      <td class="text-gray-700">${log.latency_ms ?? "无"}</td>
+      <td class="text-gray-700">${formattedTime}</td>
+    `;
+    allLogsTableBody.appendChild(row);
+  });
+}
+
+// 分页更新 (支持 errors 和 all 两种 tab)
+function updatePaginationForTab(currentItemCount, totalItems, state) {
+  if (!paginationElement) return;
+
+  const pageSize = state.pageSize;
+  const currentPage = state.currentPage;
+
+  let totalPages = 1;
+  if (totalItems >= 0) {
+    totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  } else if (currentItemCount < pageSize && currentPage === 1) {
+    totalPages = 1;
+  } else {
+    addPaginationLink(paginationElement, "&laquo;", currentPage > 1, () => {
+      state.currentPage--;
+      loadCurrentTabData();
+    });
+    addPaginationLink(paginationElement, currentPage.toString(), true, null, true);
+    addPaginationLink(paginationElement, "&raquo;", currentItemCount === pageSize, () => {
+      state.currentPage++;
+      loadCurrentTabData();
+    });
+    return;
+  }
+
+  const maxPagesToShow = 5;
+  let startPage = Math.max(1, currentPage - Math.floor(maxPagesToShow / 2));
+  let endPage = Math.min(totalPages, startPage + maxPagesToShow - 1);
+
+  if (endPage === totalPages) {
+    startPage = Math.max(1, endPage - maxPagesToShow + 1);
+  }
+
+  paginationElement.innerHTML = "";
+
+  addPaginationLink(paginationElement, "&laquo;", currentPage > 1, () => {
+    state.currentPage--;
+    loadCurrentTabData();
+  });
+
+  if (startPage > 1) {
+    addPaginationLink(paginationElement, "1", true, () => {
+      state.currentPage = 1;
+      loadCurrentTabData();
+    });
+    if (startPage > 2) {
+      addPaginationLink(paginationElement, "...", false);
+    }
+  }
+
+  for (let i = startPage; i <= endPage; i++) {
+    addPaginationLink(
+      paginationElement,
+      i.toString(),
+      true,
+      () => {
+        state.currentPage = i;
+        loadCurrentTabData();
+      },
+      i === currentPage
+    );
+  }
+
+  if (endPage < totalPages) {
+    if (endPage < totalPages - 1) {
+      addPaginationLink(paginationElement, "...", false);
+    }
+    addPaginationLink(paginationElement, totalPages.toString(), true, () => {
+      state.currentPage = totalPages;
+      loadCurrentTabData();
+    });
+  }
+
+  addPaginationLink(paginationElement, "&raquo;", currentPage < totalPages, () => {
+    state.currentPage++;
+    loadCurrentTabData();
+  });
 }
 
 // Helper function to create HTML for a single log row
@@ -975,123 +1304,9 @@ function closeLogDetailModal() {
   }
 }
 
-// 更新分页控件
+// 更新分页控件 (兼容旧调用, 使用 errorLogState)
 function updatePagination(currentItemCount, totalItems) {
-  if (!paginationElement) return;
-  paginationElement.innerHTML = ""; // Clear existing pagination
-
-  // Calculate total pages only if totalItems is known and valid
-  let totalPages = 1;
-  if (totalItems >= 0) {
-    totalPages = Math.max(1, Math.ceil(totalItems / errorLogState.pageSize));
-  } else if (
-    currentItemCount < errorLogState.pageSize &&
-    errorLogState.currentPage === 1
-  ) {
-    // If less items than page size fetched on page 1, assume it's the only page
-    totalPages = 1;
-  } else {
-    // If total is unknown and more items might exist, we can't build full pagination
-    // We can show Prev/Next based on current page and if items were returned
-    console.warn("Total item count unknown, pagination will be limited.");
-    // Basic Prev/Next for unknown total
-    addPaginationLink(
-      paginationElement,
-      "&laquo;",
-      errorLogState.currentPage > 1,
-      () => {
-        errorLogState.currentPage--;
-        loadErrorLogs();
-      }
-    );
-    addPaginationLink(
-      paginationElement,
-      errorLogState.currentPage.toString(),
-      true,
-      null,
-      true
-    ); // Current page number (non-clickable)
-    addPaginationLink(
-      paginationElement,
-      "&raquo;",
-      currentItemCount === errorLogState.pageSize,
-      () => {
-        errorLogState.currentPage++;
-        loadErrorLogs();
-      }
-    ); // Next enabled if full page was returned
-    return; // Exit here for limited pagination
-  }
-
-  const maxPagesToShow = 5; // Max number of page links to show
-  let startPage = Math.max(
-    1,
-    errorLogState.currentPage - Math.floor(maxPagesToShow / 2)
-  );
-  let endPage = Math.min(totalPages, startPage + maxPagesToShow - 1);
-
-  // Adjust startPage if endPage reaches the limit first
-  if (endPage === totalPages) {
-    startPage = Math.max(1, endPage - maxPagesToShow + 1);
-  }
-
-  // Previous Button
-  addPaginationLink(
-    paginationElement,
-    "&laquo;",
-    errorLogState.currentPage > 1,
-    () => {
-      errorLogState.currentPage--;
-      loadErrorLogs();
-    }
-  );
-
-  // First Page Button
-  if (startPage > 1) {
-    addPaginationLink(paginationElement, "1", true, () => {
-      errorLogState.currentPage = 1;
-      loadErrorLogs();
-    });
-    if (startPage > 2) {
-      addPaginationLink(paginationElement, "...", false); // Ellipsis
-    }
-  }
-
-  // Page Number Buttons
-  for (let i = startPage; i <= endPage; i++) {
-    addPaginationLink(
-      paginationElement,
-      i.toString(),
-      true,
-      () => {
-        errorLogState.currentPage = i;
-        loadErrorLogs();
-      },
-      i === errorLogState.currentPage
-    );
-  }
-
-  // Last Page Button
-  if (endPage < totalPages) {
-    if (endPage < totalPages - 1) {
-      addPaginationLink(paginationElement, "...", false); // Ellipsis
-    }
-    addPaginationLink(paginationElement, totalPages.toString(), true, () => {
-      errorLogState.currentPage = totalPages;
-      loadErrorLogs();
-    });
-  }
-
-  // Next Button
-  addPaginationLink(
-    paginationElement,
-    "&raquo;",
-    errorLogState.currentPage < totalPages,
-    () => {
-      errorLogState.currentPage++;
-      loadErrorLogs();
-    }
-  );
+  updatePaginationForTab(currentItemCount, totalItems, errorLogState);
 }
 
 // Helper function to add pagination links
@@ -1141,8 +1356,14 @@ function showLoading(show) {
     loadingIndicator.style.display = show ? "block" : "none";
 }
 
-function showNoData(show) {
-  if (noDataMessage) noDataMessage.style.display = show ? "block" : "none";
+function showNoData(show, message) {
+  if (noDataMessage) {
+    noDataMessage.style.display = show ? "block" : "none";
+    if (show && message) {
+      const p = noDataMessage.querySelector("p");
+      if (p) p.textContent = message;
+    }
+  }
 }
 
 function showError(show, message = "加载错误日志失败，请稍后重试。") {

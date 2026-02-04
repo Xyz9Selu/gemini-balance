@@ -580,6 +580,9 @@ async function initConfig() {
     if (typeof config.ERROR_LOG_RECORD_REQUEST_BODY === "undefined") {
       config.ERROR_LOG_RECORD_REQUEST_BODY = false;
     }
+    if (typeof config.RETRY_SLEEP_SECONDS === "undefined") {
+      config.RETRY_SLEEP_SECONDS = 2;
+    }
     // --- 结束：处理自动删除错误日志配置的默认值 ---
 
     // --- 新增：处理自动删除请求日志配置的默认值 ---

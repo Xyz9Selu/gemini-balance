@@ -17,6 +17,7 @@ from app.core.constants import (
     DEFAULT_MODEL,
     DEFAULT_TIMEOUT,
     MAX_RETRIES,
+    RETRY_SLEEP_SECONDS,
 )
 from app.log.logger import Logger
 
@@ -53,6 +54,7 @@ class Settings(BaseSettings):
     TEST_MODEL: str = DEFAULT_MODEL
     TIME_OUT: int = DEFAULT_TIMEOUT
     MAX_RETRIES: int = MAX_RETRIES
+    RETRY_SLEEP_SECONDS: int = RETRY_SLEEP_SECONDS
     VERTEX_API_KEYS: List[str] = []
     VERTEX_EXPRESS_BASE_URL: str = (
         "https://aiplatform.googleapis.com/v1beta1/publishers/google"

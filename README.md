@@ -182,6 +182,7 @@ This endpoint is directly forwarded to official OpenAI Compatible API format end
 | `BASE_URL` | Gemini API base URL | `https://generativelanguage.googleapis.com/v1beta` |
 | `MAX_FAILURES` | Max failures allowed per key | `3` |
 | `MAX_RETRIES` | Max retries for failed API requests | `3` |
+| `RETRY_SLEEP_SECONDS` | Duration (seconds) to wait before each retry | `2` |
 | `CHECK_INTERVAL_HOURS` | Interval (hours) to re-check disabled keys | `1` |
 | `TIMEZONE` | Application timezone | `Asia/Shanghai` |
 | `TIME_OUT` | Request timeout (seconds) | `300` |

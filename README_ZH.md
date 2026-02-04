@@ -182,6 +182,7 @@ app/
 | `BASE_URL` | Gemini API 基础 URL | `https://generativelanguage.googleapis.com/v1beta` |
 | `MAX_FAILURES` | 单个 Key 允许的最大失败次数 | `3` |
 | `MAX_RETRIES` | API 请求失败时的最大重试次数 | `3` |
+| `RETRY_SLEEP_SECONDS` | 每次重试前等待的秒数 | `2` |
 | `CHECK_INTERVAL_HOURS` | 禁用 Key 恢复检查间隔 (小时) | `1` |
 | `TIMEZONE` | 应用程序使用的时区 | `Asia/Shanghai` |
 | `TIME_OUT` | 请求超时时间 (秒) | `300` |

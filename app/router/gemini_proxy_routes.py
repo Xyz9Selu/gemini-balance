@@ -8,6 +8,7 @@ key switching retries on transient failures.
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 import json
 import re
@@ -296,6 +297,14 @@ async def gemini_v1beta_proxy(
 
     for attempt in range(settings.MAX_RETRIES):
         retries = attempt + 1
+
+        # Sleep before retry (skip on first attempt)
+        if attempt > 0 and settings.RETRY_SLEEP_SECONDS > 0:
+            logger.info(
+                f"Waiting {settings.RETRY_SLEEP_SECONDS}s before retry {retries}/{settings.MAX_RETRIES}"
+            )
+            await asyncio.sleep(settings.RETRY_SLEEP_SECONDS)
+
         api_key = await key_manager.get_next_working_key() if api_key is None else api_key
 
         # For local file refs: resolve (upload to Gemini + substitute in body) with current key each attempt

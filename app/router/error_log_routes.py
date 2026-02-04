@@ -20,6 +20,7 @@ from pydantic import BaseModel
 from app.core.security import verify_auth_token
 from app.log.logger import get_log_routes_logger
 from app.service.error_log import error_log_service
+from app.service.request_log import request_log_service
 
 router = APIRouter(prefix="/api/logs", tags=["logs"])
 
@@ -38,6 +39,82 @@ class ErrorLogListItem(BaseModel):
 class ErrorLogListResponse(BaseModel):
     logs: List[ErrorLogListItem]
     total: int
+
+
+class RequestLogListItem(BaseModel):
+    id: int
+    api_key: Optional[str] = None
+    model_name: Optional[str] = None
+    is_success: bool
+    status_code: Optional[int] = None
+    latency_ms: Optional[int] = None
+    request_time: Optional[datetime] = None
+
+
+class RequestLogListResponse(BaseModel):
+    logs: List[RequestLogListItem]
+    total: int
+
+
+@router.get("/requests", response_model=RequestLogListResponse)
+async def get_request_logs_api(
+    request: Request,
+    limit: int = Query(10, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    key_search: Optional[str] = Query(
+        None, description="Search term for API key (partial match)"
+    ),
+    model_search: Optional[str] = Query(
+        None, description="Search term for model name (partial match)"
+    ),
+    is_success: Optional[bool] = Query(
+        None, description="Filter by success (true) or failure (false)"
+    ),
+    status_code_search: Optional[str] = Query(
+        None, description="Filter by status code"
+    ),
+    start_date: Optional[datetime] = Query(
+        None, description="Start datetime for filtering"
+    ),
+    end_date: Optional[datetime] = Query(
+        None, description="End datetime for filtering"
+    ),
+    sort_by: str = Query(
+        "id", description="Field to sort by (e.g., 'id', 'request_time')"
+    ),
+    sort_order: str = Query("desc", description="Sort order ('asc' or 'desc')"),
+):
+    """
+    获取请求日志列表 (所有请求记录, 含成功和失败)
+    """
+    auth_token = request.cookies.get("auth_token")
+    if not auth_token or not verify_auth_token(auth_token):
+        logger.warning("Unauthorized access attempt to request logs list")
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    try:
+        result = await request_log_service.process_get_request_logs(
+            limit=limit,
+            offset=offset,
+            key_search=key_search,
+            model_search=model_search,
+            is_success_filter=is_success,
+            status_code_search=status_code_search,
+            start_date=start_date,
+            end_date=end_date,
+            sort_by=sort_by,
+            sort_order=sort_order,
+        )
+        logs_data = result["logs"]
+        total_count = result["total"]
+
+        validated_logs = [RequestLogListItem(**log) for log in logs_data]
+        return RequestLogListResponse(logs=validated_logs, total=total_count)
+    except Exception as e:
+        logger.exception(f"Failed to get request logs list: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get request logs list: {str(e)}"
+        )
 
 
 @router.get("/errors", response_model=ErrorLogListResponse)
