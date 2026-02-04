@@ -6,7 +6,7 @@ from typing import Union
 from sqlalchemy import and_, case, func, or_, select
 
 from app.database.connection import database
-from app.database.models import RequestLog
+from app.database.models import ErrorLog, RequestLog
 from app.log.logger import get_stats_logger
 
 logger = get_stats_logger()
@@ -142,11 +142,14 @@ class StatsService:
         """
         获取指定时间段内的 API 调用详情
 
+        合并 RequestLog 与 ErrorLog，确保失败记录（如 gemini-proxy 503/403）在趋势图中正确显示。
+        ErrorLog 中的每条记录代表一次失败，与 RequestLog 的失败记录一起计入失败数。
+
         Args:
-            period: 时间段标识 ('1m', '1h', '24h')
+            period: 时间段标识 ('1m', '1h', '8h', '24h')
 
         Returns:
-            包含调用详情的字典列表，每个字典包含 timestamp, key, model, status, status_code, latency_ms, error_log_id(可选)
+            包含调用详情的字典列表，每个字典包含 timestamp, key, model, status, status_code, latency_ms
 
         Raises:
             ValueError: 如果 period 无效
@@ -164,7 +167,8 @@ class StatsService:
             raise ValueError(f"无效的时间段标识: {period}")
 
         try:
-            query = (
+            # 1. 从 RequestLog 获取所有调用记录
+            request_query = (
                 select(
                     RequestLog.request_time.label("timestamp"),
                     RequestLog.api_key.label("key"),
@@ -175,28 +179,51 @@ class StatsService:
                 .where(RequestLog.request_time >= start_time)
                 .order_by(RequestLog.request_time.desc())
             )
+            request_results = await database.fetch_all(request_query)
 
-            results = await database.fetch_all(query)
+            # 2. 从 ErrorLog 获取失败记录（与 RequestLog 合并，确保趋势图显示所有失败）
+            error_query = (
+                select(
+                    ErrorLog.request_time.label("timestamp"),
+                    ErrorLog.gemini_key.label("key"),
+                    ErrorLog.model_name.label("model"),
+                    ErrorLog.error_code.label("status_code"),
+                )
+                .where(ErrorLog.request_time >= start_time)
+                .order_by(ErrorLog.request_time.desc())
+            )
+            error_results = await database.fetch_all(error_query)
 
             details: list[dict] = []
-            for row in results:
+            for row in request_results:
                 status = "failure"
                 if row["status_code"] is not None:
                     status = "success" if 200 <= row["status_code"] < 300 else "failure"
-
-                record = {
+                details.append({
                     "timestamp": row["timestamp"].isoformat(),
                     "key": row["key"],
                     "model": row["model"],
                     "status": status,
                     "status_code": row["status_code"],
                     "latency_ms": row["latency_ms"],
-                }
+                })
 
-                details.append(record)
+            for row in error_results:
+                details.append({
+                    "timestamp": row["timestamp"].isoformat(),
+                    "key": row["key"],
+                    "model": row["model"],
+                    "status": "failure",
+                    "status_code": row["status_code"],
+                    "latency_ms": None,
+                })
+
+            # 按时间倒序排列（与前端 bucketize 逻辑兼容）
+            details.sort(key=lambda r: r["timestamp"], reverse=True)
 
             logger.info(
-                f"Retrieved {len(details)} API call details for period '{period}'"
+                f"Retrieved {len(details)} API call details for period '{period}' "
+                f"(RequestLog: {len(request_results)}, ErrorLog: {len(error_results)})"
             )
             return details
 
