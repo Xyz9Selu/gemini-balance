@@ -314,16 +314,33 @@ async def gemini_v1beta_proxy(
                 body_to_send, _ = await resolve_local_files_in_body(request_body, api_key)
             except Exception as e:
                 logger.warning(f"Resolve local files failed: {e}")
-                last_error = str(e)
+                last_error = (str(e) or repr(e) or type(e).__name__).strip() or "Local resolve error (no details)"
                 last_status = None
+                request_msg_parsed = None
+                if settings.ERROR_LOG_RECORD_REQUEST_BODY and request_body:
+                    try:
+                        request_msg_parsed = json.loads(
+                            request_body.decode("utf-8", errors="replace")
+                        )
+                    except json.JSONDecodeError:
+                        request_msg_parsed = {"_raw_preview": request_body[:500].decode("utf-8", errors="replace")}
                 await add_error_log(
                     gemini_key=api_key,
                     model_name=model_name,
                     error_type="gemini-proxy-local-resolve",
                     error_log=last_error,
                     error_code=None,
-                    request_msg=json.loads(request_body.decode("utf-8", errors="replace")) if (settings.ERROR_LOG_RECORD_REQUEST_BODY and request_body) else None,
+                    request_msg=request_msg_parsed,
                     request_datetime=request_datetime,
+                )
+                latency_ms = int((time.perf_counter() - start_time) * 1000)
+                await add_request_log(
+                    model_name=model_name,
+                    api_key=api_key,
+                    is_success=False,
+                    status_code=None,
+                    latency_ms=latency_ms,
+                    request_time=request_datetime,
                 )
                 api_key = await key_manager.handle_api_failure(api_key, retries)
                 if not api_key:
@@ -370,14 +387,31 @@ async def gemini_v1beta_proxy(
 
             # Retryable status: log error and switch key (unless last attempt)
             last_error = body.decode("utf-8", errors="replace") if body else f"HTTP {status_code}"
+            request_msg_parsed = None
+            if settings.ERROR_LOG_RECORD_REQUEST_BODY and body_to_send:
+                try:
+                    request_msg_parsed = json.loads(
+                        body_to_send.decode("utf-8", errors="replace")
+                    )
+                except json.JSONDecodeError:
+                    request_msg_parsed = {"_raw_preview": body_to_send[:500].decode("utf-8", errors="replace")}
             await add_error_log(
                 gemini_key=api_key,
                 model_name=model_name,
                 error_type="gemini-proxy",
                 error_log=last_error,
                 error_code=status_code,
-                request_msg=json.loads(body_to_send.decode("utf-8", errors="replace")) if (settings.ERROR_LOG_RECORD_REQUEST_BODY and body_to_send) else None,
+                request_msg=request_msg_parsed,
                 request_datetime=request_datetime,
+            )
+            latency_ms = int((time.perf_counter() - start_time) * 1000)
+            await add_request_log(
+                model_name=model_name,
+                api_key=api_key,
+                is_success=False,
+                status_code=status_code,
+                latency_ms=latency_ms,
+                request_time=request_datetime,
             )
 
             # If we're using a file-specific API key (Gemini file), don't switch keys on retry.
@@ -396,16 +430,35 @@ async def gemini_v1beta_proxy(
                     break
 
         except httpx.RequestError as e:
-            last_error = str(e)
+            # Ensure we always have a non-empty error message (some exceptions have empty str())
+            last_error = (str(e) or repr(e) or type(e).__name__).strip() or "Network error (no details)"
             last_status = None
+            # Safely parse request_msg to avoid losing error record on JSON decode failure
+            request_msg_parsed = None
+            if settings.ERROR_LOG_RECORD_REQUEST_BODY and request_body:
+                try:
+                    request_msg_parsed = json.loads(
+                        request_body.decode("utf-8", errors="replace")
+                    )
+                except json.JSONDecodeError:
+                    request_msg_parsed = {"_raw_preview": request_body[:500].decode("utf-8", errors="replace")}
             await add_error_log(
                 gemini_key=api_key,
                 model_name=model_name,
                 error_type="gemini-proxy-network",
                 error_log=last_error,
                 error_code=None,
-                request_msg=json.loads(request_body.decode("utf-8", errors="replace")) if (settings.ERROR_LOG_RECORD_REQUEST_BODY and request_body) else None,
+                request_msg=request_msg_parsed,
                 request_datetime=request_datetime,
+            )
+            latency_ms = int((time.perf_counter() - start_time) * 1000)
+            await add_request_log(
+                model_name=model_name,
+                api_key=api_key,
+                is_success=False,
+                status_code=None,
+                latency_ms=latency_ms,
+                request_time=request_datetime,
             )
             # If we're using a file-specific API key (Gemini file), don't switch keys on retry
             if has_file_references and not has_local_file_refs and file_specific_api_key and api_key == file_specific_api_key:
@@ -421,15 +474,7 @@ async def gemini_v1beta_proxy(
                     break
 
     # Final failure: return last observed status/body if available, else 502.
-    latency_ms = int((time.perf_counter() - start_time) * 1000)
-    await add_request_log(
-        model_name=model_name,
-        api_key=api_key,
-        is_success=False,
-        status_code=last_status,
-        latency_ms=latency_ms,
-        request_time=request_datetime,
-    )
+    # (Each failed attempt already logged to RequestLog above; no duplicate here.)
 
     if last_status is not None and last_error is not None:
         return Response(

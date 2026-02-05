@@ -123,6 +123,10 @@ async def add_error_log(
         bool: 是否添加成功
     """
     try:
+        # Ensure error_log is never empty for better debugging
+        if not (error_log and str(error_log).strip()):
+            error_log = f"{error_type or 'unknown'}: no error details captured"
+
         if request_msg is None:
             request_msg_json = None
         else:
