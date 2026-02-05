@@ -159,6 +159,42 @@ def is_valid_api_key(key: str) -> bool:
     return False
 
 
+def extract_total_token_count_from_gemini_response(
+    response_body: Optional[bytes] = None,
+    response_dict: Optional[Dict[str, Any]] = None,
+) -> Optional[int]:
+    """
+    Extract totalTokenCount from Gemini API response.
+
+    Args:
+        response_body: Raw response bytes (JSON), or
+        response_dict: Parsed response dict (e.g. from generateContent or countTokens)
+
+    Returns:
+        totalTokenCount if found, else None
+    """
+    data = None
+    if response_dict is not None:
+        data = response_dict
+    elif response_body:
+        try:
+            data = json.loads(response_body.decode("utf-8", errors="replace"))
+        except (json.JSONDecodeError, TypeError, ValueError):
+            return None
+    if not data or not isinstance(data, dict):
+        return None
+    # usageMetadata (generateContent) or totalTokens (countTokens)
+    usage = data.get("usageMetadata") or data.get("usage_metadata")
+    if usage and isinstance(usage, dict):
+        count = usage.get("totalTokenCount") or usage.get("total_token_count")
+        if count is not None:
+            return int(count)
+    count = data.get("totalTokens") or data.get("total_tokens")
+    if count is not None:
+        return int(count)
+    return None
+
+
 def redact_key_for_logging(key: Any) -> str:
     """
     Redact API keys for secure logging.

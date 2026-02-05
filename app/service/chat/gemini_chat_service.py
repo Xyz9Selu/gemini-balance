@@ -15,7 +15,7 @@ from app.handler.response_handler import GeminiResponseHandler
 from app.log.logger import get_gemini_logger
 from app.service.client.api_client import GeminiApiClient
 from app.service.key.key_manager import KeyManager
-from app.utils.helpers import redact_key_for_logging
+from app.utils.helpers import extract_total_token_count_from_gemini_response, redact_key_for_logging
 
 logger = get_gemini_logger()
 
@@ -368,6 +368,9 @@ class GeminiChatService:
         finally:
             end_time = time.perf_counter()
             latency_ms = int((end_time - start_time) * 1000)
+            req_len = len(json.dumps(payload)) if payload else None
+            resp_len = len(json.dumps(response)) if response else None
+            token_count = extract_total_token_count_from_gemini_response(response_dict=response) if response else None
             await add_request_log(
                 model_name=model,
                 api_key=api_key,
@@ -375,6 +378,9 @@ class GeminiChatService:
                 status_code=status_code,
                 latency_ms=latency_ms,
                 request_time=request_datetime,
+                request_content_length=req_len,
+                response_content_length=resp_len,
+                total_token_count=token_count,
             )
 
     async def count_tokens(
@@ -432,6 +438,9 @@ class GeminiChatService:
         finally:
             end_time = time.perf_counter()
             latency_ms = int((end_time - start_time) * 1000)
+            req_len = len(json.dumps(payload)) if payload else None
+            resp_len = len(json.dumps(response)) if response else None
+            token_count = extract_total_token_count_from_gemini_response(response_dict=response) if response else None
             await add_request_log(
                 model_name=model,
                 api_key=api_key,
@@ -439,6 +448,9 @@ class GeminiChatService:
                 status_code=status_code,
                 latency_ms=latency_ms,
                 request_time=request_datetime,
+                request_content_length=req_len,
+                response_content_length=resp_len,
+                total_token_count=token_count,
             )
 
     async def stream_generate_content(
@@ -533,6 +545,7 @@ class GeminiChatService:
             finally:
                 end_time = time.perf_counter()
                 latency_ms = int((end_time - start_time) * 1000)
+                req_len = len(json.dumps(payload)) if payload else None
                 await add_request_log(
                     model_name=model,
                     api_key=final_api_key,
@@ -540,4 +553,5 @@ class GeminiChatService:
                     status_code=status_code,
                     latency_ms=latency_ms,
                     request_time=request_datetime,
+                    request_content_length=req_len,
                 )

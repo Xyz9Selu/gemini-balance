@@ -49,6 +49,9 @@ class RequestLogListItem(BaseModel):
     status_code: Optional[int] = None
     latency_ms: Optional[int] = None
     request_time: Optional[datetime] = None
+    request_content_length: Optional[int] = None
+    response_content_length: Optional[int] = None
+    total_token_count: Optional[int] = None
 
 
 class RequestLogListResponse(BaseModel):
