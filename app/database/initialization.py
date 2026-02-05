@@ -3,7 +3,7 @@
 """
 from dotenv import dotenv_values
 
-from sqlalchemy import inspect
+from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
 from app.database.connection import engine, Base
@@ -11,6 +11,30 @@ from app.database.models import Settings
 from app.log.logger import get_database_logger
 
 logger = get_database_logger()
+
+
+def _migrate_request_log_columns():
+    """Add request_content_length, response_content_length, total_token_count to t_request_log if missing."""
+    try:
+        inspector = inspect(engine)
+        if "t_request_log" not in inspector.get_table_names():
+            return
+        columns = {c["name"] for c in inspector.get_columns("t_request_log")}
+        with engine.connect() as conn:
+            if "request_content_length" not in columns:
+                conn.execute(text("ALTER TABLE t_request_log ADD COLUMN request_content_length INTEGER"))
+                conn.commit()
+                logger.info("Added request_content_length to t_request_log")
+            if "total_token_count" not in columns:
+                conn.execute(text("ALTER TABLE t_request_log ADD COLUMN total_token_count INTEGER"))
+                conn.commit()
+                logger.info("Added total_token_count to t_request_log")
+            if "response_content_length" not in columns:
+                conn.execute(text("ALTER TABLE t_request_log ADD COLUMN response_content_length INTEGER"))
+                conn.commit()
+                logger.info("Added response_content_length to t_request_log")
+    except Exception as e:
+        logger.warning(f"Request log migration skipped or failed: {e}")
 
 
 def create_tables():
@@ -69,7 +93,10 @@ def initialize_database():
     try:
         # 创建表
         create_tables()
-        
+
+        # 迁移: 为 t_request_log 添加新列
+        _migrate_request_log_columns()
+
         # 导入环境变量
         import_env_to_settings()
     except Exception as e:

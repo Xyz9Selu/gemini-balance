@@ -1,6 +1,7 @@
 # app/service/embedding/gemini_embedding_service.py
 
 import datetime
+import json
 import time
 from typing import Any, Dict
 
@@ -85,6 +86,8 @@ class GeminiEmbeddingService:
         finally:
             end_time = time.perf_counter()
             latency_ms = int((end_time - start_time) * 1000)
+            req_len = len(json.dumps(payload)) if payload else None
+            resp_len = len(json.dumps(response)) if response else None
             await add_request_log(
                 model_name=model,
                 api_key=api_key,
@@ -92,6 +95,8 @@ class GeminiEmbeddingService:
                 status_code=status_code,
                 latency_ms=latency_ms,
                 request_time=request_datetime,
+                request_content_length=req_len,
+                response_content_length=resp_len,
             )
 
     async def batch_embed_contents(
@@ -131,6 +136,8 @@ class GeminiEmbeddingService:
         finally:
             end_time = time.perf_counter()
             latency_ms = int((end_time - start_time) * 1000)
+            req_len = len(json.dumps(payload)) if payload else None
+            resp_len = len(json.dumps(response)) if response else None
             await add_request_log(
                 model_name=model,
                 api_key=api_key,
@@ -138,4 +145,6 @@ class GeminiEmbeddingService:
                 status_code=status_code,
                 latency_ms=latency_ms,
                 request_time=request_datetime,
+                request_content_length=req_len,
+                response_content_length=resp_len,
             )

@@ -987,6 +987,9 @@ function renderRequestLogs(logs) {
     const successText = log.is_success ? "成功" : "失败";
     const successClass = log.is_success ? "text-green-600" : "text-red-600";
 
+    const reqLen = log.request_content_length != null ? log.request_content_length.toLocaleString() : "无";
+    const respLen = log.response_content_length != null ? log.response_content_length.toLocaleString() : "无";
+    const tokenCount = log.total_token_count != null ? log.total_token_count.toLocaleString() : "无";
     const row = document.createElement("tr");
     row.innerHTML = `
       <td class="text-gray-700">${sequentialId}</td>
@@ -995,6 +998,9 @@ function renderRequestLogs(logs) {
       <td class="${successClass} font-medium">${successText}</td>
       <td class="text-gray-700">${log.status_code ?? "无"}</td>
       <td class="text-gray-700">${log.latency_ms ?? "无"}</td>
+      <td class="text-gray-700">${reqLen}</td>
+      <td class="text-gray-700">${respLen}</td>
+      <td class="text-gray-700">${tokenCount}</td>
       <td class="text-gray-700">${formattedTime}</td>
     `;
     allLogsTableBody.appendChild(row);

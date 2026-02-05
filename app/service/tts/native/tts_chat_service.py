@@ -4,11 +4,13 @@
 """
 
 import datetime
+import json
 import time
 from typing import Any, Dict
 
 from app.config.config import settings
 from app.database.services import add_error_log, add_request_log
+from app.utils.helpers import extract_total_token_count_from_gemini_response
 from app.domain.gemini_models import GeminiRequest
 from app.log.logger import get_gemini_logger
 from app.service.chat.gemini_chat_service import GeminiChatService
@@ -70,6 +72,8 @@ class TTSGeminiChatService(GeminiChatService):
         request_datetime = datetime.datetime.now()
         is_success = False
         status_code = None
+        response = None
+        payload = None
 
         try:
             # 构建TTS专用的payload - 不包含tools和safetySettings
@@ -161,7 +165,9 @@ class TTSGeminiChatService(GeminiChatService):
             # 记录请求日志
             end_time = time.perf_counter()
             latency_ms = int((end_time - start_time) * 1000)
-
+            req_len = len(json.dumps(payload)) if payload else None
+            resp_len = len(json.dumps(response)) if response else None
+            token_count = extract_total_token_count_from_gemini_response(response_dict=response) if response else None
             await add_request_log(
                 model_name=model,
                 api_key=api_key,
@@ -169,4 +175,7 @@ class TTSGeminiChatService(GeminiChatService):
                 status_code=status_code,
                 latency_ms=latency_ms,
                 request_time=request_datetime,
+                request_content_length=req_len,
+                response_content_length=resp_len,
+                total_token_count=token_count,
             )

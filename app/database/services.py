@@ -509,6 +509,9 @@ async def add_request_log(
     status_code: Optional[int] = None,
     latency_ms: Optional[int] = None,
     request_time: Optional[datetime] = None,
+    request_content_length: Optional[int] = None,
+    response_content_length: Optional[int] = None,
+    total_token_count: Optional[int] = None,
 ) -> bool:
     """
     添加 API 请求日志
@@ -520,6 +523,9 @@ async def add_request_log(
         status_code: API 响应状态码
         latency_ms: 请求耗时(毫秒)
         request_time: 请求发生时间 (如果为 None, 则使用当前时间)
+        request_content_length: 请求体字节长度
+        response_content_length: 响应体字节长度
+        total_token_count: 总token数(来自API usageMetadata)
 
     Returns:
         bool: 是否添加成功
@@ -534,6 +540,9 @@ async def add_request_log(
             is_success=is_success,
             status_code=status_code,
             latency_ms=latency_ms,
+            request_content_length=request_content_length,
+            response_content_length=response_content_length,
+            total_token_count=total_token_count,
         )
         await database.execute(query)
         return True
@@ -581,6 +590,9 @@ async def get_request_logs(
             RequestLog.status_code,
             RequestLog.latency_ms,
             RequestLog.request_time,
+            RequestLog.request_content_length,
+            RequestLog.response_content_length,
+            RequestLog.total_token_count,
         )
 
         if key_search:

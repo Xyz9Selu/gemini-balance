@@ -58,6 +58,9 @@ class RequestLog(Base):
     is_success = Column(Boolean, nullable=False, comment="请求是否成功")
     status_code = Column(Integer, nullable=True, comment="API响应状态码")
     latency_ms = Column(Integer, nullable=True, comment="请求耗时(毫秒)")
+    request_content_length = Column(Integer, nullable=True, comment="请求体字节长度")
+    response_content_length = Column(Integer, nullable=True, comment="响应体字节长度")
+    total_token_count = Column(Integer, nullable=True, comment="总token数(来自API)")
 
     def __repr__(self):
         return f"<RequestLog(id='{self.id}', key='{self.api_key[:4]}...', success='{self.is_success}')>"
