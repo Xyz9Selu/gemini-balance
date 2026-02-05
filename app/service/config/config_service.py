@@ -250,7 +250,7 @@ class ConfigService:
         try:
             await reset_key_manager_instance()
             # 确保使用更新后的 settings 中的 API_KEYS
-            await get_key_manager_instance(settings.API_KEYS)
+            await get_key_manager_instance(settings.API_KEYS, settings.VERTEX_API_KEYS)
             logger.info("KeyManager instance re-initialized with reloaded settings.")
         except Exception as e:
             logger.error(f"Failed to re-initialize KeyManager during reset: {str(e)}")

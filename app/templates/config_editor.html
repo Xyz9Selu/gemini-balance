@@ -1192,6 +1192,25 @@ endblock %} {% block head_extra_styles %}
           />
         </div>
 
+        <!-- 配额重置时间 (Gemini API 每日配额重置时刻) -->
+        <div class="mb-6">
+          <label
+            for="QUOTA_RESET_HOUR"
+            class="block font-semibold mb-2 text-gray-700"
+            >配额重置小时 (0-23)
+            <i class="fas fa-question-circle text-gray-400 ml-1 cursor-help" title="Gemini API 每日配额重置时刻的小时，默认 16 表示 16:00 (UTC+8)"></i>
+          </label>
+          <input
+            type="number"
+            id="QUOTA_RESET_HOUR"
+            name="QUOTA_RESET_HOUR"
+            min="0"
+            max="23"
+            step="1"
+            class="w-full px-4 py-3 rounded-lg form-input-themed"
+          />
+        </div>
+
       </div>
 
       <!-- 日志配置 -->

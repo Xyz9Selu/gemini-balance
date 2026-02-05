@@ -13,6 +13,36 @@ from app.utils.helpers import redact_key_for_logging
 logger = Logger.setup_logger("scheduler")
 
 
+async def reset_key_failure_counts_daily():
+    """
+    Reset all API key failure counts in KeyManager at daily quota reset time.
+    Gemini API resets quota at 16:00 UTC+8 by default; this aligns failure counts
+    with the quota cycle.
+    """
+    logger.info("Starting daily reset of key failure counts...")
+    try:
+        key_manager = await get_key_manager_instance(
+            settings.API_KEYS, settings.VERTEX_API_KEYS
+        )
+        if not key_manager or not hasattr(key_manager, "key_failure_counts"):
+            logger.warning(
+                "KeyManager instance not available. Skipping reset."
+            )
+            return
+        await key_manager.reset_failure_counts()
+        await key_manager.reset_vertex_failure_counts()
+        logger.info("Key failure counts reset successfully.")
+    except ValueError:
+        logger.warning(
+            "KeyManager not initialized (no API keys). Skipping failure count reset."
+        )
+    except Exception as e:
+        logger.error(
+            f"Failed to reset key failure counts: {e}",
+            exc_info=True,
+        )
+
+
 async def check_failed_keys():
     """
     定时检查失败次数大于0的API密钥，并尝试验证它们。
@@ -171,6 +201,20 @@ def setup_scheduler():
         logger.info(
             f"File cleanup job scheduled to run every {cleanup_interval} hour(s)."
         )
+
+    # 每日配额重置时刻重置 KeyManager 失败计数 (与 Gemini API 配额周期对齐)
+    quota_hour = getattr(settings, "QUOTA_RESET_HOUR", 16)
+    scheduler.add_job(
+        reset_key_failure_counts_daily,
+        "cron",
+        hour=quota_hour,
+        minute=0,
+        id="reset_key_failure_counts_job",
+        name="Reset Key Failure Counts (Quota Cycle)",
+    )
+    logger.info(
+        f"Key failure counts reset job scheduled daily at {quota_hour:02d}:00 ({settings.TIMEZONE})."
+    )
 
     scheduler.start()
     logger.info("Scheduler started with all jobs.")

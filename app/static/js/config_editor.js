@@ -585,6 +585,12 @@ async function initConfig() {
     }
     // --- 结束：处理自动删除错误日志配置的默认值 ---
 
+    // --- 配额重置时间默认值 ---
+    if (typeof config.QUOTA_RESET_HOUR === "undefined") {
+      config.QUOTA_RESET_HOUR = 16;
+    }
+    // --- 结束：配额重置时间默认值 ---
+
     // --- 新增：处理自动删除请求日志配置的默认值 ---
     if (typeof config.AUTO_DELETE_REQUEST_LOGS_ENABLED === "undefined") {
       config.AUTO_DELETE_REQUEST_LOGS_ENABLED = false;
@@ -1329,7 +1335,10 @@ function collectFormData() {
       !element.closest(`.${MAP_ITEM_CLASS}`)
     ) {
       if (element.type === "number") {
-        formData[element.name] = parseFloat(element.value);
+        const intFields = ["QUOTA_RESET_HOUR", "CHECK_INTERVAL_HOURS"];
+        formData[element.name] = intFields.includes(element.name)
+          ? parseInt(element.value, 10)
+          : parseFloat(element.value);
       } else if (
         element.classList.contains(SENSITIVE_INPUT_CLASS) &&
         element.hasAttribute("data-real-value")

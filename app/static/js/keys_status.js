@@ -1187,6 +1187,36 @@ function debounce(func, delay) {
     };
 }
 
+// Stats period: 'quota_cycle' (current quota cycle) or 'overall' (all time). Persisted in URL.
+function getStatsPeriod() {
+    const params = new URLSearchParams(window.location.search);
+    const p = params.get('stats_period');
+    return (p === 'overall' || p === 'quota_cycle') ? p : 'quota_cycle';
+}
+
+function setStatsPeriod(period) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('stats_period', period);
+    window.history.replaceState({}, '', url.toString());
+    updateStatsPeriodUI();
+    fetchAndDisplayKeys('valid', 1);
+    fetchAndDisplayKeys('invalid', 1);
+}
+
+function updateStatsPeriodUI() {
+    const period = getStatsPeriod();
+    const btnOverall = document.getElementById('statsPeriodOverall');
+    const btnQuota = document.getElementById('statsPeriodQuota');
+    [btnOverall, btnQuota].forEach(btn => {
+        if (!btn) return;
+        if ((period === 'overall' && btn === btnOverall) || (period === 'quota_cycle' && btn === btnQuota)) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+}
+
 
 // --- Key List Display & Pagination ---
 
@@ -1225,6 +1255,10 @@ async function fetchAndDisplayKeys(type, page = 1) {
         if (failCountThreshold !== null) {
             params.append('fail_count_threshold', failCountThreshold);
         }
+        const statsPeriod = getStatsPeriod();
+        if (statsPeriod) {
+            params.append('stats_period', statsPeriod);
+        }
 
         const data = await fetchAPI(`/api/keys?${params.toString()}`);
 
@@ -1253,7 +1287,7 @@ async function fetchAndDisplayKeys(type, page = 1) {
 /**
  * Creates a single key list item element.
  * @param {string} key The API key.
- * @param {object|number} keyData Object with fail_count, call_count, success_count; or legacy number (fail_count only).
+ * @param {object|number} keyData Object with fail_count, call_count, success_count, failed_count; or legacy number (fail_count only).
  * @param {string} type 'valid' or 'invalid'.
  * @returns {HTMLElement} The created list item element.
  */
@@ -1261,12 +1295,14 @@ function createKeyListItem(key, keyData, type) {
     const fail_count = typeof keyData === 'object' ? (keyData.fail_count ?? 0) : (keyData ?? 0);
     const call_count = typeof keyData === 'object' ? (keyData.call_count ?? 0) : 0;
     const success_count = typeof keyData === 'object' ? (keyData.success_count ?? 0) : 0;
+    const failed_count = typeof keyData === 'object' ? (keyData.failed_count ?? 0) : 0;
 
     const li = document.createElement("li");
     li.className = `bg-white rounded-lg p-3 shadow-sm hover:shadow-md transition-all duration-300 border ${type === 'valid' ? 'hover:border-success-300' : 'hover:border-danger-300'} transform hover:-translate-y-1`;
     li.dataset.key = key;
     li.dataset.failCount = fail_count;
 
+    const statsPeriodLabel = getStatsPeriod() === 'overall' ? '整体' : '配额周期';
     const statusBadge = type === 'valid'
         ? `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-success-50 text-success-600"><i class="fas fa-check mr-1"></i> 有效</span>`
         : `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-danger-50 text-danger-600"><i class="fas fa-times mr-1"></i> 无效</span>`;
@@ -1284,10 +1320,10 @@ function createKeyListItem(key, keyData, type) {
                         </button>
                     </div>
                 </div>
-                <div class="key-stats-bar flex items-center gap-4 px-2.5 py-1.5 rounded-md text-xs" title="24h 调用统计 · 失败为运行时计数">
+                <div class="key-stats-bar flex items-center gap-4 px-2.5 py-1.5 rounded-md text-xs" title="${statsPeriodLabel} 调用统计">
                     <span class="key-stat key-stat-call"><i class="fas fa-chart-line mr-1.5 opacity-70"></i><span class="font-semibold">${call_count}</span> 调用</span>
                     <span class="key-stat key-stat-success"><i class="fas fa-check-circle mr-1.5 opacity-70"></i><span class="font-semibold">${success_count}</span> 成功</span>
-                    <span class="key-stat key-stat-fail"><i class="fas fa-exclamation-triangle mr-1.5 opacity-70"></i><span class="font-semibold">${fail_count}</span> 失败</span>
+                    <span class="key-stat key-stat-fail"><i class="fas fa-exclamation-triangle mr-1.5 opacity-70"></i><span class="font-semibold">${failed_count}</span> 失败</span>
                 </div>
                 <div class="flex flex-wrap items-center gap-2">
                     <button class="flex items-center gap-1 bg-success-600 hover:bg-success-700 text-white px-2.5 py-1 rounded-lg text-xs font-medium transition-all duration-200" onclick="verifyKey('${key}', this)"><i class="fas fa-check-circle"></i> 验证</button>
@@ -1691,6 +1727,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initializeKeyFilterControls();
   initializeGlobalBatchVerificationHandlers();
   initializeKeySelectionListeners();
+  updateStatsPeriodUI(); // Sync stats period toggle with URL
   initializeKeyPaginationAndSearch(); // This will also handle initial display
   registerServiceWorker();
   initializeDropdownMenu(); // 初始化下拉菜单

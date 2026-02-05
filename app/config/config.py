@@ -67,6 +67,9 @@ class Settings(BaseSettings):
     CHECK_INTERVAL_HOURS: int = 1  # 默认检查间隔为1小时
     TIMEZONE: str = "Asia/Shanghai"  # 默认时区
 
+    # 配额重置时间 (Gemini API 每日配额重置时刻, 默认 16:00 UTC+8)
+    QUOTA_RESET_HOUR: int = 16  # 0-23
+
     # 日志配置
     LOG_LEVEL: str = "INFO"
     ERROR_LOG_RECORD_REQUEST_BODY: bool = False

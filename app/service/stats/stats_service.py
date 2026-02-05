@@ -3,13 +3,30 @@
 import datetime
 from typing import Union
 
+import zoneinfo
 from sqlalchemy import and_, case, func, or_, select
 
+from app.config.config import settings
 from app.database.connection import database
 from app.database.models import ErrorLog, RequestLog
 from app.log.logger import get_stats_logger
 
 logger = get_stats_logger()
+
+
+def get_quota_cycle_start_time() -> datetime.datetime:
+    """
+    Get the start datetime of the current quota cycle based on configured
+    QUOTA_RESET_HOUR and TIMEZONE (e.g. Gemini resets at 16:00 UTC+8).
+    """
+    tz = zoneinfo.ZoneInfo(settings.TIMEZONE)
+    now = datetime.datetime.now(tz)
+    reset_hour = getattr(settings, "QUOTA_RESET_HOUR", 16)
+    today_reset = now.replace(hour=reset_hour, minute=0, second=0, microsecond=0)
+    if now >= today_reset:
+        return today_reset
+    yesterday_reset = today_reset - datetime.timedelta(days=1)
+    return yesterday_reset
 
 
 class StatsService:
@@ -327,31 +344,47 @@ class StatsService:
             return []
 
     async def get_keys_call_stats(
-        self, keys: list[str], period: str = "24h"
+        self, keys: list[str], period: str = "quota_cycle"
     ) -> dict[str, dict[str, int]]:
         """
-        Get call_count and success_count per key for the given period (from RequestLog).
+        Get call_count, success_count and failed_count per key for the given period (from RequestLog).
 
         Args:
             keys: List of API keys to get stats for.
-            period: Time period ('1h', '8h', '24h').
+            period: Time period ('1h', '8h', '24h', 'quota_cycle', 'overall').
+                   - quota_cycle: since last Gemini quota reset (e.g. 16:00 UTC+8)
+                   - overall: all time
 
         Returns:
-            {key: {"call_count": int, "success_count": int}}
+            {key: {"call_count": int, "success_count": int, "failed_count": int}}
         """
         if not keys:
             return {}
         now = datetime.datetime.now()
-        if period == "1h":
+        if period == "overall":
+            start_time = None  # No lower bound
+        elif period == "quota_cycle":
+            cycle_start = get_quota_cycle_start_time()
+            # Convert to naive local datetime for DB comparison (RequestLog uses naive)
+            start_time = datetime.datetime.fromtimestamp(cycle_start.timestamp())
+        elif period == "1h":
             start_time = now - datetime.timedelta(hours=1)
         elif period == "8h":
             start_time = now - datetime.timedelta(hours=8)
         elif period == "24h":
             start_time = now - datetime.timedelta(hours=24)
         else:
-            start_time = now - datetime.timedelta(hours=24)
+            cycle_start = get_quota_cycle_start_time()
+            start_time = datetime.datetime.fromtimestamp(cycle_start.timestamp())
 
         try:
+            conditions = [
+                RequestLog.api_key.isnot(None),
+                RequestLog.api_key.in_(keys),
+            ]
+            if start_time is not None:
+                conditions.append(RequestLog.request_time >= start_time)
+
             query = (
                 select(
                     RequestLog.api_key.label("key"),
@@ -368,30 +401,46 @@ class StatsService:
                             else_=0,
                         )
                     ).label("success_count"),
+                    func.sum(
+                        case(
+                            (
+                                or_(
+                                    RequestLog.status_code < 200,
+                                    RequestLog.status_code >= 300,
+                                ),
+                                1,
+                            ),
+                            (RequestLog.status_code.is_(None), 1),
+                            else_=0,
+                        )
+                    ).label("failed_count"),
                 )
-                .where(
-                    RequestLog.request_time >= start_time,
-                    RequestLog.api_key.isnot(None),
-                    RequestLog.api_key.in_(keys),
-                )
+                .where(and_(*conditions))
                 .group_by(RequestLog.api_key)
             )
             rows = await database.fetch_all(query)
             result = {}
             for row in rows:
                 if row["key"]:
+                    call_count = row["call_count"] or 0
+                    success_count = int(row["success_count"] or 0)
+                    failed_count = int(row["failed_count"] or 0)
                     result[row["key"]] = {
-                        "call_count": row["call_count"] or 0,
-                        "success_count": int(row["success_count"] or 0),
+                        "call_count": call_count,
+                        "success_count": success_count,
+                        "failed_count": failed_count,
                     }
             # Ensure all keys have an entry (default 0 for keys with no logs)
             for key in keys:
                 if key not in result:
-                    result[key] = {"call_count": 0, "success_count": 0}
+                    result[key] = {"call_count": 0, "success_count": 0, "failed_count": 0}
             return result
         except Exception as e:
             logger.error(f"Failed to get keys call stats: {e}")
-            return {k: {"call_count": 0, "success_count": 0} for k in keys}
+            return {
+                k: {"call_count": 0, "success_count": 0, "failed_count": 0}
+                for k in keys
+            }
 
     async def get_key_usage_details_last_24h(self, key: str) -> Union[dict, None]:
         """
