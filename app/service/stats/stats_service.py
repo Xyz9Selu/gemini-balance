@@ -4,7 +4,7 @@ import datetime
 from typing import Union
 
 import zoneinfo
-from sqlalchemy import and_, case, func, or_, select
+from sqlalchemy import and_, case, distinct, func, or_, select
 
 from app.config.config import settings
 from app.database.connection import database
@@ -441,6 +441,118 @@ class StatsService:
                 k: {"call_count": 0, "success_count": 0, "failed_count": 0}
                 for k in keys
             }
+
+    async def get_model_call_stats(
+        self, period: str
+    ) -> list[dict[str, str | int]]:
+        """
+        Get call count (total, success, failed) per model for the given period.
+
+        Args:
+            period: 'overall' (all time) or 'quota_cycle' (since last Gemini quota reset).
+
+        Returns:
+            List of dicts: [{"model": str, "total": int, "key_count": int, "avg_per_key": float, "success": int, "failed": int}, ...]
+            Sorted by total count descending. Models with null/empty name are grouped as "(unknown)".
+        """
+        if period == "overall":
+            start_time = None
+        elif period == "quota_cycle":
+            cycle_start = get_quota_cycle_start_time()
+            start_time = datetime.datetime.fromtimestamp(cycle_start.timestamp())
+        else:
+            cycle_start = get_quota_cycle_start_time()
+            start_time = datetime.datetime.fromtimestamp(cycle_start.timestamp())
+
+        try:
+            model_expr = func.coalesce(
+                func.nullif(func.trim(RequestLog.model_name), ""), "(unknown)"
+            )
+            query = (
+                select(
+                    model_expr.label("model"),
+                    func.count(RequestLog.id).label("total"),
+                    func.count(distinct(RequestLog.api_key)).label("key_count"),
+                    func.sum(
+                        case(
+                            (
+                                and_(
+                                    RequestLog.status_code >= 200,
+                                    RequestLog.status_code < 300,
+                                ),
+                                1,
+                            ),
+                            else_=0,
+                        )
+                    ).label("success"),
+                    func.sum(
+                        case(
+                            (
+                                or_(
+                                    RequestLog.status_code < 200,
+                                    RequestLog.status_code >= 300,
+                                ),
+                                1,
+                            ),
+                            (RequestLog.status_code.is_(None), 1),
+                            else_=0,
+                        )
+                    ).label("failed"),
+                )
+                .group_by(model_expr)
+                .order_by(func.count(RequestLog.id).desc())
+            )
+            if start_time is not None:
+                query = query.where(RequestLog.request_time >= start_time)
+            rows = await database.fetch_all(query)
+            result = []
+            for row in rows:
+                model_name = row["model"] or "(unknown)"
+                total = row["total"] or 0
+                key_count = row["key_count"] or 0
+                success = int(row["success"] or 0)
+                failed = int(row["failed"] or 0)
+                avg_per_key = (
+                    round(total / key_count, 1) if key_count > 0 else 0
+                )
+                result.append({
+                    "model": model_name,
+                    "total": total,
+                    "key_count": key_count,
+                    "avg_per_key": avg_per_key,
+                    "success": success,
+                    "failed": failed,
+                })
+            return result
+        except Exception as e:
+            logger.error(f"Failed to get model call stats for period '{period}': {e}")
+            return []
+
+    async def get_model_call_stats_both_periods(
+        self,
+    ) -> dict[str, list[dict[str, str | int]]]:
+        """
+        Get model call stats for both overall and quota_cycle periods.
+
+        Returns:
+            {"overall": [...], "quota_cycle": [...], "quota_reset": {...}}
+        """
+        from app.config.config import settings
+
+        overall = await self.get_model_call_stats("overall")
+        quota_cycle = await self.get_model_call_stats("quota_cycle")
+        cycle_start = get_quota_cycle_start_time()
+        quota_reset_hour = getattr(settings, "QUOTA_RESET_HOUR", 16)
+
+        return {
+            "overall": overall,
+            "quota_cycle": quota_cycle,
+            "quota_reset": {
+                "hour": quota_reset_hour,
+                "timezone": settings.TIMEZONE,
+                "cycle_start": cycle_start.isoformat(),
+            },
+        }
 
     async def get_key_usage_details_last_24h(self, key: str) -> Union[dict, None]:
         """

@@ -246,8 +246,12 @@ async def gemini_v1beta_proxy(
 
     stream = _is_stream_request(request)
 
-    # Capture model name for logs/stats
-    model_name = _extract_model_name_from_path(f"/v1beta/{upstream_path}") or "gemini-proxy"
+    # Capture model name for logs/stats; when not extractable, use request path
+    _path_for_log = f"v1beta/{upstream_path}" if upstream_path else "v1beta/"
+    model_name = (
+        _extract_model_name_from_path(f"/v1beta/{upstream_path}")
+        or (_path_for_log[:100] if len(_path_for_log) <= 100 else _path_for_log[:97] + "...")
+    )
 
     last_error: Optional[str] = None
     last_status: Optional[int] = None
