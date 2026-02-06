@@ -190,6 +190,21 @@ def setup_page_routes(app: FastAPI) -> None:
             logger.error(f"Error accessing logs page: {str(e)}")
             raise
 
+    @app.get("/model-stats", response_class=HTMLResponse)
+    async def model_stats_page(request: Request):
+        """模型调用统计页面"""
+        try:
+            auth_token = request.cookies.get("auth_token")
+            if not auth_token or not verify_auth_token(auth_token):
+                logger.warning("Unauthorized access attempt to model stats page")
+                return RedirectResponse(url="/", status_code=302)
+
+            logger.info("Model stats page accessed successfully")
+            return templates.TemplateResponse("model_stats.html", {"request": request})
+        except Exception as e:
+            logger.error(f"Error accessing model stats page: {str(e)}")
+            raise
+
 
 def setup_health_routes(app: FastAPI) -> None:
     """

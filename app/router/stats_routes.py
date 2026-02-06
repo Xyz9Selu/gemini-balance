@@ -26,6 +26,24 @@ router = APIRouter(
 
 stats_service = StatsService()
 
+@router.get(
+    "/stats/model-call-stats",
+    summary="Get model call stats (overall and quota cycle)",
+    description="Returns total, success, and failed call counts per model for both overall (all time) and quota_cycle (since last Gemini quota reset) periods.",
+)
+async def get_model_call_stats():
+    """Get model call statistics for overall and quota cycle periods."""
+    try:
+        data = await stats_service.get_model_call_stats_both_periods()
+        return data
+    except Exception as e:
+        logger.error(f"Error fetching model call stats: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch model call stats: {e}",
+        )
+
+
 @router.get("/key-usage-details/{key}",
             summary="获取指定密钥最近24小时的模型调用次数",
             description="根据提供的 API 密钥，返回过去24小时内每个模型被调用的次数统计。")
