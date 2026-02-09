@@ -249,18 +249,15 @@ function initializeTabControls() {
     tabAllBtn.addEventListener("click", () => switchTab("all"));
   }
   if (allSearchBtn) {
-    allSearchBtn.addEventListener("click", function () {
-      requestLogState.search.key = allKeySearchInput ? allKeySearchInput.value.trim() : "";
-      requestLogState.search.model = modelSearchInput ? modelSearchInput.value.trim() : "";
-      const isVal = isSuccessFilterSelect ? isSuccessFilterSelect.value : "";
-      requestLogState.search.isSuccess = isVal === "true" ? true : isVal === "false" ? false : null;
-      requestLogState.search.statusCode = statusCodeSearchInput ? statusCodeSearchInput.value.trim() : "";
-      requestLogState.search.startDate = allStartDateInput ? allStartDateInput.value : "";
-      requestLogState.search.endDate = allEndDateInput ? allEndDateInput.value : "";
-      requestLogState.currentPage = 1;
-      loadRequestLogs();
-    });
+    allSearchBtn.addEventListener("click", performAllSearch);
   }
+  // Trigger search on Enter in all tab inputs
+  addEnterKeyListener(allKeySearchInput, performAllSearch);
+  addEnterKeyListener(modelSearchInput, performAllSearch);
+  addEnterKeyListener(isSuccessFilterSelect, performAllSearch);
+  addEnterKeyListener(statusCodeSearchInput, performAllSearch);
+  addEnterKeyListener(allStartDateInput, performAllSearch);
+  addEnterKeyListener(allEndDateInput, performAllSearch);
   if (allSortByIdHeader) {
     allSortByIdHeader.addEventListener("click", function () {
       if (requestLogState.sort.field === "id") {
@@ -303,26 +300,56 @@ function loadCurrentTabData() {
   else loadRequestLogs();
 }
 
+function performErrorSearch() {
+  errorLogState.search.key = keySearchInput
+    ? keySearchInput.value.trim()
+    : "";
+  errorLogState.search.error = errorSearchInput
+    ? errorSearchInput.value.trim()
+    : "";
+  errorLogState.search.errorCode = errorCodeSearchInput
+    ? errorCodeSearchInput.value.trim()
+    : "";
+  errorLogState.search.startDate = startDateInput
+    ? startDateInput.value
+    : "";
+  errorLogState.search.endDate = endDateInput ? endDateInput.value : "";
+  errorLogState.currentPage = 1;
+  loadErrorLogs();
+}
+
+function performAllSearch() {
+  requestLogState.search.key = allKeySearchInput ? allKeySearchInput.value.trim() : "";
+  requestLogState.search.model = modelSearchInput ? modelSearchInput.value.trim() : "";
+  const isVal = isSuccessFilterSelect ? isSuccessFilterSelect.value : "";
+  requestLogState.search.isSuccess = isVal === "true" ? true : isVal === "false" ? false : null;
+  requestLogState.search.statusCode = statusCodeSearchInput ? statusCodeSearchInput.value.trim() : "";
+  requestLogState.search.startDate = allStartDateInput ? allStartDateInput.value : "";
+  requestLogState.search.endDate = allEndDateInput ? allEndDateInput.value : "";
+  requestLogState.currentPage = 1;
+  loadRequestLogs();
+}
+
+function addEnterKeyListener(element, handler) {
+  if (!element) return;
+  element.addEventListener("keypress", function (event) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      handler();
+    }
+  });
+}
+
 function initializeSearchControls() {
   if (searchBtn) {
-    searchBtn.addEventListener("click", function () {
-      errorLogState.search.key = keySearchInput
-        ? keySearchInput.value.trim()
-        : "";
-      errorLogState.search.error = errorSearchInput
-        ? errorSearchInput.value.trim()
-        : "";
-      errorLogState.search.errorCode = errorCodeSearchInput
-        ? errorCodeSearchInput.value.trim()
-        : "";
-      errorLogState.search.startDate = startDateInput
-        ? startDateInput.value
-        : "";
-      errorLogState.search.endDate = endDateInput ? endDateInput.value : "";
-      errorLogState.currentPage = 1; // Reset to first page on new search
-      loadErrorLogs();
-    });
+    searchBtn.addEventListener("click", performErrorSearch);
   }
+  // Trigger search on Enter in error tab inputs
+  addEnterKeyListener(keySearchInput, performErrorSearch);
+  addEnterKeyListener(errorSearchInput, performErrorSearch);
+  addEnterKeyListener(errorCodeSearchInput, performErrorSearch);
+  addEnterKeyListener(startDateInput, performErrorSearch);
+  addEnterKeyListener(endDateInput, performErrorSearch);
 }
 
 function initializeModalControls() {
