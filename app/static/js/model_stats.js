@@ -15,7 +15,7 @@ async function fetchAPI(url) {
 function getPeriodFromUrl() {
   const params = new URLSearchParams(window.location.search);
   const p = params.get("period");
-  return p === "quota_cycle" ? "quota_cycle" : "overall";
+  return p === "overall" ? "overall" : "quota_cycle";
 }
 
 function setPeriodInUrl(period) {
