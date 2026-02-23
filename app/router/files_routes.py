@@ -218,25 +218,12 @@ async def handle_upload(
             raise HTTPException(status_code=404, detail="Upload session not found")
 
         # 本地文件上傳：累積分塊，最終保存到本地並返回 file id
-        if session_info.get("local"):
-            upload_handler = get_upload_handler()
-            return await upload_handler.handle_local_upload(
-                request=request,
-                upload_id=upload_id,
-                session_info=session_info,
-                files_service=files_service,
-            )
-
-        real_api_key = session_info["api_key"]
-        original_upload_url = session_info["upload_url"]
-        upload_url = original_upload_url
-        logger.info(f"Using real API key for upload: {redact_key_for_logging(real_api_key)}")
-
         upload_handler = get_upload_handler()
-        return await upload_handler.proxy_upload_request(
+        return await upload_handler.handle_local_upload(
             request=request,
-            upload_url=upload_url,
-            files_service=files_service
+            upload_id=upload_id,
+            session_info=session_info,
+            files_service=files_service,
         )
         
     except HTTPException as e:

@@ -67,146 +67,31 @@ class FilesService:
         """
         try:
             # 本地文件上传：不调用 Google，只创建本地会话，返回代理 URL
-            if settings.ENABLE_LOCAL_FILE_UPLOAD:
-                display_name = ""
-                if body:
-                    try:
-                        request_data = json.loads(body)
-                        display_name = request_data.get("displayName", "")
-                    except Exception:
-                        pass
-                upload_id = uuid.uuid4().hex
-                async with _upload_sessions_lock:
-                    _upload_sessions[upload_id] = {
-                        "local": True,
-                        "user_token": user_token,
-                        "display_name": display_name,
-                        "mime_type": headers.get("x-goog-upload-header-content-type", "application/octet-stream"),
-                        "size_bytes": int(headers.get("x-goog-upload-header-content-length", "0") or "0"),
-                        "created_at": datetime.now(timezone.utc),
-                        "chunks": [],
-                    }
-                asyncio.create_task(self._cleanup_expired_sessions())
-                proxy_upload_url = f"{request_host.rstrip('/')}/upload/v1beta/files?key={user_token}&upload_id={upload_id}&upload_protocol=resumable" if request_host else f"/upload/v1beta/files?key={user_token}&upload_id={upload_id}&upload_protocol=resumable"
-                logger.info(f"Local upload session created: upload_id={upload_id}")
-                return {}, {
-                    "X-Goog-Upload-URL": proxy_upload_url,
-                    "X-Goog-Upload-Status": "active"
+            display_name = ""
+            if body:
+                try:
+                    request_data = json.loads(body)
+                    display_name = request_data.get("displayName", "")
+                except Exception:
+                    pass
+            upload_id = uuid.uuid4().hex
+            async with _upload_sessions_lock:
+                _upload_sessions[upload_id] = {
+                    "local": True,
+                    "user_token": user_token,
+                    "display_name": display_name,
+                    "mime_type": headers.get("x-goog-upload-header-content-type", "application/octet-stream"),
+                    "size_bytes": int(headers.get("x-goog-upload-header-content-length", "0") or "0"),
+                    "created_at": datetime.now(timezone.utc),
+                    "chunks": [],
                 }
-
-            # 获取可用的 API key
-            key_manager = await self._get_key_manager()
-            api_key = await key_manager.get_next_key()
-            
-            if not api_key:
-                raise HTTPException(status_code=503, detail="No available API keys")
-            
-            # 转发请求到真实的 Gemini API
-            async with AsyncClient() as client:
-                # 准备请求头
-                forward_headers = {
-                    "X-Goog-Upload-Protocol": headers.get("x-goog-upload-protocol", "resumable"),
-                    "X-Goog-Upload-Command": headers.get("x-goog-upload-command", "start"),
-                    "Content-Type": headers.get("content-type", "application/json"),
-                }
-                
-                # 添加其他必要的头
-                if "x-goog-upload-header-content-length" in headers:
-                    forward_headers["X-Goog-Upload-Header-Content-Length"] = headers["x-goog-upload-header-content-length"]
-                if "x-goog-upload-header-content-type" in headers:
-                    forward_headers["X-Goog-Upload-Header-Content-Type"] = headers["x-goog-upload-header-content-type"]
-                
-                # 发送请求
-                response = await client.post(
-                    "https://generativelanguage.googleapis.com/upload/v1beta/files",
-                    headers=forward_headers,
-                    content=body,
-                    params={"key": api_key}
-                )
-                
-                if response.status_code != 200:
-                    logger.error(f"Upload initialization failed: {response.status_code} - {response.text}")
-                    raise HTTPException(status_code=response.status_code, detail="Upload initialization failed")
-                
-                # 获取上传 URL
-                upload_url = response.headers.get("x-goog-upload-url")
-                if not upload_url:
-                    raise HTTPException(status_code=500, detail="No upload URL in response")
-                
-                logger.info(f"Original upload URL from Google: {upload_url}")
-                    
-                
-                # 儲存上傳資訊到 headers 中，供後續使用
-                # 不在這裡創建數據庫記錄，等到上傳完成後再創建
-                logger.info(f"Upload initialized with API key: {redact_key_for_logging(api_key)}")
-                
-                # 解析响应 - 初始化响应可能是空的
-                response_data = {}
-                
-                # 從請求體中解析文件信息（如果有）
-                display_name = ""
-                if body:
-                    try:
-                        request_data = json.loads(body)
-                        display_name = request_data.get("displayName", "")
-                    except Exception:
-                        pass
-                # 從 upload URL 中提取 upload_id
-                import urllib.parse
-                parsed_url = urllib.parse.urlparse(upload_url)
-                query_params = urllib.parse.parse_qs(parsed_url.query)
-                upload_id = query_params.get('upload_id', [None])[0]
-                
-                if upload_id:
-                    # 儲存上傳會話信息，使用 upload_id 作為 key
-                    async with _upload_sessions_lock:
-                        _upload_sessions[upload_id] = {
-                            "api_key": api_key,
-                            "user_token": user_token,
-                            "display_name": display_name,
-                            "mime_type": headers.get("x-goog-upload-header-content-type", "application/octet-stream"),
-                            "size_bytes": int(headers.get("x-goog-upload-header-content-length", "0")),
-                            "created_at": datetime.now(timezone.utc),
-                            "upload_url": upload_url
-                        }
-                        logger.info(f"Stored upload session for upload_id={upload_id}: api_key={redact_key_for_logging(api_key)}")
-                        logger.debug(f"Total active sessions: {len(_upload_sessions)}")
-                else:
-                    logger.warning(f"No upload_id found in upload URL: {upload_url}")
-                
-                # 定期清理過期的會話（超過1小時）
-                asyncio.create_task(self._cleanup_expired_sessions())
-                
-                # 替換 Google 的 URL 為我們的代理 URL
-                proxy_upload_url = upload_url
-                if request_host:
-                    # 原始: https://generativelanguage.googleapis.com/upload/v1beta/files?key=AIzaSyDc...&upload_id=xxx&upload_protocol=resumable
-                    # 替換為: http://request-host/upload/v1beta/files?key=sk-123456&upload_id=xxx&upload_protocol=resumable
-                    
-                    # 先替換域名
-                    proxy_upload_url = upload_url.replace(
-                        "https://generativelanguage.googleapis.com",
-                        request_host.rstrip('/')
-                    )
-                    
-                    # 再替換 key 參數
-                    import re
-                    # 匹配 key=xxx 參數
-                    key_pattern = r'(\?|&)key=([^&]+)'
-                    match = re.search(key_pattern, proxy_upload_url)
-                    if match:
-                        # 替換為我們的 token
-                        proxy_upload_url = proxy_upload_url.replace(
-                            f"{match.group(1)}key={match.group(2)}",
-                            f"{match.group(1)}key={user_token}"
-                        )
-                    
-                    logger.info(f"Replaced upload URL: {upload_url} -> {proxy_upload_url}")
-                
-                return response_data, {
-                    "X-Goog-Upload-URL": proxy_upload_url,
-                    "X-Goog-Upload-Status": "active"
-                }
+            asyncio.create_task(self._cleanup_expired_sessions())
+            proxy_upload_url = f"{request_host.rstrip('/')}/upload/v1beta/files?key={user_token}&upload_id={upload_id}&upload_protocol=resumable" if request_host else f"/upload/v1beta/files?key={user_token}&upload_id={upload_id}&upload_protocol=resumable"
+            logger.info(f"Local upload session created: upload_id={upload_id}")
+            return {}, {
+                "X-Goog-Upload-URL": proxy_upload_url,
+                "X-Goog-Upload-Status": "active"
+            }
                 
         except HTTPException:
             raise

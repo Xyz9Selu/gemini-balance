@@ -83,8 +83,7 @@ class Settings(BaseSettings):
     FILES_CLEANUP_INTERVAL_HOURS: int = 1
     FILES_USER_ISOLATION_ENABLED: bool = True
 
-    # Local file upload (deferred analyse)
-    ENABLE_LOCAL_FILE_UPLOAD: bool = True
+    # Local file upload (deferred analyse): upload to local, then to Gemini on analyse
     LOCAL_UPLOAD_DIR: str = DEFAULT_LOCAL_UPLOAD_DIR
     LOCAL_FILE_EXPIRE_MINUTES: int = DEFAULT_LOCAL_FILE_EXPIRE_MINUTES
 
