@@ -328,6 +328,7 @@ async def gemini_v1beta_proxy(
                         )
                     except json.JSONDecodeError:
                         request_msg_parsed = {"_raw_preview": request_body[:500].decode("utf-8", errors="replace")}
+                attempt_time = datetime.datetime.now()
                 await add_error_log(
                     gemini_key=api_key,
                     model_name=model_name,
@@ -335,7 +336,7 @@ async def gemini_v1beta_proxy(
                     error_log=last_error,
                     error_code=None,
                     request_msg=request_msg_parsed,
-                    request_datetime=request_datetime,
+                    request_datetime=attempt_time,
                 )
                 latency_ms = int((time.perf_counter() - start_time) * 1000)
                 req_len = len(body_to_send) if body_to_send else None
@@ -345,7 +346,7 @@ async def gemini_v1beta_proxy(
                     is_success=False,
                     status_code=None,
                     latency_ms=latency_ms,
-                    request_time=request_datetime,
+                    request_time=attempt_time,
                     request_content_length=req_len,
                 )
                 api_key = await key_manager.handle_api_failure(api_key, retries)
@@ -409,6 +410,7 @@ async def gemini_v1beta_proxy(
                     )
                 except json.JSONDecodeError:
                     request_msg_parsed = {"_raw_preview": body_to_send[:500].decode("utf-8", errors="replace")}
+            attempt_time = datetime.datetime.now()
             await add_error_log(
                 gemini_key=api_key,
                 model_name=model_name,
@@ -416,7 +418,7 @@ async def gemini_v1beta_proxy(
                 error_log=last_error,
                 error_code=status_code,
                 request_msg=request_msg_parsed,
-                request_datetime=request_datetime,
+                request_datetime=attempt_time,
             )
             latency_ms = int((time.perf_counter() - start_time) * 1000)
             req_len = len(body_to_send) if body_to_send else None
@@ -427,7 +429,7 @@ async def gemini_v1beta_proxy(
                 is_success=False,
                 status_code=status_code,
                 latency_ms=latency_ms,
-                request_time=request_datetime,
+                request_time=attempt_time,
                 request_content_length=req_len,
                 response_content_length=resp_len,
             )
@@ -460,6 +462,7 @@ async def gemini_v1beta_proxy(
                     )
                 except json.JSONDecodeError:
                     request_msg_parsed = {"_raw_preview": request_body[:500].decode("utf-8", errors="replace")}
+            attempt_time = datetime.datetime.now()
             await add_error_log(
                 gemini_key=api_key,
                 model_name=model_name,
@@ -467,7 +470,7 @@ async def gemini_v1beta_proxy(
                 error_log=last_error,
                 error_code=None,
                 request_msg=request_msg_parsed,
-                request_datetime=request_datetime,
+                request_datetime=attempt_time,
             )
             latency_ms = int((time.perf_counter() - start_time) * 1000)
             req_len = len(request_body or body_to_send) if (request_body or body_to_send) else None
@@ -477,7 +480,7 @@ async def gemini_v1beta_proxy(
                 is_success=False,
                 status_code=None,
                 latency_ms=latency_ms,
-                request_time=request_datetime,
+                request_time=attempt_time,
                 request_content_length=req_len,
             )
             # If we're using a file-specific API key (Gemini file), don't switch keys on retry

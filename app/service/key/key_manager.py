@@ -61,6 +61,24 @@ class KeyManager:
             for key in self.vertex_key_failure_counts:
                 self.vertex_key_failure_counts[key] = 0
 
+    async def shuffle_key_cycle(self):
+        """
+        Re-shuffle the key cycle order (e.g. at quota reset).
+        Creates a new random round-robin order for both API keys and Vertex keys.
+        """
+        async with self.key_cycle_lock:
+            if self.api_keys:
+                self.key_cycle = cycle(
+                    random.sample(self.api_keys, len(self.api_keys))
+                )
+                logger.info("API key cycle shuffled.")
+        async with self.vertex_key_cycle_lock:
+            if self.vertex_api_keys:
+                self.vertex_key_cycle = cycle(
+                    random.sample(self.vertex_api_keys, len(self.vertex_api_keys))
+                )
+                logger.info("Vertex API key cycle shuffled.")
+
     async def reset_key_failure_count(self, key: str) -> bool:
         """重置指定key的失败计数"""
         async with self.failure_count_lock:

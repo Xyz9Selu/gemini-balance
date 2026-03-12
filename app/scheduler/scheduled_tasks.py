@@ -15,9 +15,9 @@ logger = Logger.setup_logger("scheduler")
 
 async def reset_key_failure_counts_daily():
     """
-    Reset all API key failure counts in KeyManager at daily quota reset time.
-    Gemini API resets quota at 16:00 UTC+8 by default; this aligns failure counts
-    with the quota cycle.
+    Reset all API key failure counts and shuffle key cycle in KeyManager at daily
+    quota reset time. Gemini API resets quota at 16:00 UTC+8 by default; this
+    aligns failure counts and key order with the quota cycle.
     """
     logger.info("Starting daily reset of key failure counts...")
     try:
@@ -31,7 +31,8 @@ async def reset_key_failure_counts_daily():
             return
         await key_manager.reset_failure_counts()
         await key_manager.reset_vertex_failure_counts()
-        logger.info("Key failure counts reset successfully.")
+        await key_manager.shuffle_key_cycle()
+        logger.info("Key failure counts reset and key cycle shuffled successfully.")
     except ValueError:
         logger.warning(
             "KeyManager not initialized (no API keys). Skipping failure count reset."
@@ -213,7 +214,7 @@ def setup_scheduler():
         name="Reset Key Failure Counts (Quota Cycle)",
     )
     logger.info(
-        f"Key failure counts reset job scheduled daily at {quota_hour:02d}:00 ({settings.TIMEZONE})."
+        f"Key failure counts reset and key shuffle job scheduled daily at {quota_hour:02d}:00 ({settings.TIMEZONE})."
     )
 
     scheduler.start()
