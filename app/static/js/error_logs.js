@@ -147,6 +147,9 @@ let statusCodeSearchInput;
 let allStartDateInput;
 let allEndDateInput;
 let allSortByIdHeader;
+let requestLogDetailModal;
+let closeRequestLogDetailModalBtn;
+let closeRequestLogDetailFooterBtn;
 
 // Helper functions for initialization
 function cacheDOMElements() {
@@ -199,6 +202,9 @@ function cacheDOMElements() {
   allStartDateInput = document.getElementById("allStartDate");
   allEndDateInput = document.getElementById("allEndDate");
   allSortByIdHeader = document.getElementById("allSortById");
+  requestLogDetailModal = document.getElementById("requestLogDetailModal");
+  closeRequestLogDetailModalBtn = document.getElementById("closeRequestLogDetailModalBtn");
+  closeRequestLogDetailFooterBtn = document.getElementById("closeRequestLogDetailFooterBtn");
 }
   
 function getTabFromURL() {
@@ -361,6 +367,21 @@ function initializeModalControls() {
     logDetailModal.addEventListener("click", function (event) {
       if (event.target === logDetailModal) {
         closeLogDetailModal();
+      }
+    });
+  }
+
+  // Request Log Detail Modal
+  if (requestLogDetailModal) {
+    if (closeRequestLogDetailModalBtn) {
+      closeRequestLogDetailModalBtn.addEventListener("click", closeRequestLogDetailModal);
+    }
+    if (closeRequestLogDetailFooterBtn) {
+      closeRequestLogDetailFooterBtn.addEventListener("click", closeRequestLogDetailModal);
+    }
+    requestLogDetailModal.addEventListener("click", function (event) {
+      if (event.target === requestLogDetailModal) {
+        closeRequestLogDetailModal();
       }
     });
   }
@@ -1029,9 +1050,99 @@ function renderRequestLogs(logs) {
       <td class="text-gray-700">${respLen}</td>
       <td class="text-gray-700">${tokenCount}</td>
       <td class="text-gray-700">${formattedTime}</td>
+      <td class="text-gray-700">
+        <button class="btn-view-details btn-view-request-details mr-2 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm transition-all duration-200" data-log-id="${log.id}" title="查看详情">
+          查看详情
+        </button>
+      </td>
     `;
     allLogsTableBody.appendChild(row);
   });
+
+  document.querySelectorAll(".btn-view-request-details").forEach((btn) => {
+    btn.addEventListener("click", function () {
+      const logId = parseInt(this.getAttribute("data-log-id"), 10);
+      showRequestLogDetails(logId);
+    });
+  });
+}
+
+// 显示请求日志详情 (从 API 获取, 含 request_body / response_body)
+async function showRequestLogDetails(logId) {
+  if (!requestLogDetailModal) return;
+
+  const el = (id) => document.getElementById(id);
+  ["modalReqLogKey", "modalReqLogModel", "modalReqLogSuccess", "modalReqLogStatusCode", "modalReqLogLatency", "modalReqLogTime", "modalReqLogRequestBody", "modalReqLogResponseBody"].forEach((id) => {
+    const node = el(id);
+    if (node) node.textContent = "加载中...";
+  });
+
+  requestLogDetailModal.classList.add("show");
+  document.body.style.overflow = "hidden";
+
+  try {
+    const details = await fetchAPI(`/api/logs/requests/${logId}/details`);
+    if (!details) throw new Error("未找到请求记录详情");
+
+    let formattedTime = "N/A";
+    try {
+      const t = new Date(details.request_time);
+      if (!isNaN(t)) {
+        formattedTime = t.toLocaleString("zh-CN", {
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hour12: false,
+        });
+      }
+    } catch (e) {
+      console.error("Error formatting date:", e);
+    }
+
+    const maskKey = (key) => {
+      if (!key || key.length < 8) return key || "无";
+      return `${key.substring(0, 4)}...${key.substring(key.length - 4)}`;
+    };
+
+    if (el("modalReqLogKey")) el("modalReqLogKey").textContent = maskKey(details.api_key) || "无";
+    if (el("modalReqLogModel")) el("modalReqLogModel").textContent = details.model_name || "无";
+    if (el("modalReqLogSuccess")) el("modalReqLogSuccess").textContent = details.is_success ? "成功" : "失败";
+    if (el("modalReqLogStatusCode")) el("modalReqLogStatusCode").textContent = details.status_code ?? "无";
+    if (el("modalReqLogLatency")) el("modalReqLogLatency").textContent = details.latency_ms != null ? details.latency_ms : "无";
+    if (el("modalReqLogTime")) el("modalReqLogTime").textContent = formattedTime;
+
+    let requestBodyText = details.request_body ?? "无";
+    let responseBodyText = details.response_body ?? "无";
+    if (typeof requestBodyText === "string" && (requestBodyText.trim().startsWith("{") || requestBodyText.trim().startsWith("["))) {
+      try {
+        requestBodyText = JSON.stringify(JSON.parse(requestBodyText), null, 2);
+      } catch (_) {}
+    }
+    if (typeof responseBodyText === "string" && (responseBodyText.trim().startsWith("{") || responseBodyText.trim().startsWith("["))) {
+      try {
+        responseBodyText = JSON.stringify(JSON.parse(responseBodyText), null, 2);
+      } catch (_) {}
+    }
+    if (el("modalReqLogRequestBody")) el("modalReqLogRequestBody").textContent = requestBodyText;
+    if (el("modalReqLogResponseBody")) el("modalReqLogResponseBody").textContent = responseBodyText;
+
+    setupCopyButtons("#requestLogDetailModal");
+  } catch (error) {
+    console.error("获取请求记录详情失败:", error);
+    if (el("modalReqLogRequestBody")) el("modalReqLogRequestBody").textContent = `加载失败: ${error.message}`;
+    if (el("modalReqLogResponseBody")) el("modalReqLogResponseBody").textContent = "加载失败";
+    showNotification(`加载请求记录详情失败: ${error.message}`, "error", 5000);
+  }
+}
+
+function closeRequestLogDetailModal() {
+  if (requestLogDetailModal) {
+    requestLogDetailModal.classList.remove("show");
+    document.body.style.overflow = "";
+  }
 }
 
 // 分页更新 (支持 errors 和 all 两种 tab)

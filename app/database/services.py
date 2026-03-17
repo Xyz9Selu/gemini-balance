@@ -512,6 +512,8 @@ async def add_request_log(
     request_content_length: Optional[int] = None,
     response_content_length: Optional[int] = None,
     total_token_count: Optional[int] = None,
+    request_body: Optional[str] = None,
+    response_body: Optional[str] = None,
 ) -> bool:
     """
     添加 API 请求日志
@@ -526,6 +528,8 @@ async def add_request_log(
         request_content_length: 请求体字节长度
         response_content_length: 响应体字节长度
         total_token_count: 总token数(来自API usageMetadata)
+        request_body: 请求体内容(可选)
+        response_body: 响应体内容(可选)
 
     Returns:
         bool: 是否添加成功
@@ -543,6 +547,8 @@ async def add_request_log(
             request_content_length=request_content_length,
             response_content_length=response_content_length,
             total_token_count=total_token_count,
+            request_body=request_body,
+            response_body=response_body,
         )
         await database.execute(query)
         return True
@@ -626,6 +632,32 @@ async def get_request_logs(
         return [dict(row) for row in result]
     except Exception as e:
         logger.exception(f"Failed to get request logs with filters: {str(e)}")
+        raise
+
+
+async def get_request_log_by_id(log_id: int) -> Optional[Dict[str, Any]]:
+    """
+    根据 ID 获取单条请求日志详情 (含 request_body, response_body)
+    """
+    try:
+        query = select(
+            RequestLog.id,
+            RequestLog.api_key,
+            RequestLog.model_name,
+            RequestLog.is_success,
+            RequestLog.status_code,
+            RequestLog.latency_ms,
+            RequestLog.request_time,
+            RequestLog.request_content_length,
+            RequestLog.response_content_length,
+            RequestLog.total_token_count,
+            RequestLog.request_body,
+            RequestLog.response_body,
+        ).where(RequestLog.id == log_id)
+        row = await database.fetch_one(query)
+        return dict(row) if row else None
+    except Exception as e:
+        logger.exception(f"Failed to get request log by id {log_id}: {str(e)}")
         raise
 
 

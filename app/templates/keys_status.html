@@ -1342,7 +1342,13 @@ endblock %} {% block head_extra_styles %}
           </div>
         </div>
         <div class="p-4 chart-container">
-          <canvas id="apiStatsChart"></canvas>
+          <canvas
+            id="apiStatsChart"
+            data-model-rpm-limit="{{ model_rpm_limit | default(0) }}"
+          ></canvas>
+          <p class="mt-2 text-xs text-gray-500">
+            每模型速率限制: {{ model_rpm_limit | default(0) }} RPM（超过时请求将等待）
+          </p>
         </div>
       </div>
 

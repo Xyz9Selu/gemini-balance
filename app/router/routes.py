@@ -134,6 +134,7 @@ def setup_page_routes(app: FastAPI) -> None:
                     "valid_key_count": valid_key_count,
                     "invalid_key_count": invalid_key_count,
                     "api_stats": api_stats,
+                    "model_rpm_limit": settings.MODEL_RPM_LIMIT,
                 },
             )
         except Exception as e:

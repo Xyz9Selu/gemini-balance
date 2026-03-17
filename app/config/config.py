@@ -55,6 +55,8 @@ class Settings(BaseSettings):
     TIME_OUT: int = DEFAULT_TIMEOUT
     MAX_RETRIES: int = MAX_RETRIES
     RETRY_SLEEP_SECONDS: int = RETRY_SLEEP_SECONDS
+    # Per-model RPM limit (0 = disabled). When exceeded, requests wait instead of being rejected.
+    MODEL_RPM_LIMIT: int = Field(default=20, ge=0, le=1000, description="Requests per minute per model; 0 = disabled")
     VERTEX_API_KEYS: List[str] = []
     VERTEX_EXPRESS_BASE_URL: str = (
         "https://aiplatform.googleapis.com/v1beta1/publishers/google"
@@ -77,6 +79,8 @@ class Settings(BaseSettings):
     AUTO_DELETE_ERROR_LOGS_DAYS: int = 7
     AUTO_DELETE_REQUEST_LOGS_ENABLED: bool = False
     AUTO_DELETE_REQUEST_LOGS_DAYS: int = 30
+    REQUEST_LOG_RECORD_BODY: bool = False
+    REQUEST_LOG_BODY_MAX_BYTES: int = 65535
 
     # Files API
     FILES_CLEANUP_ENABLED: bool = True

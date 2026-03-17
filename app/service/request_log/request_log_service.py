@@ -58,6 +58,17 @@ async def process_get_request_logs(
         raise
 
 
+async def process_get_request_log_details(log_id: int) -> Optional[Dict[str, Any]]:
+    """
+    获取单条请求日志详情 (含 request_body, response_body).
+    """
+    try:
+        return await db_services.get_request_log_by_id(log_id=log_id)
+    except Exception as e:
+        logger.error(f"Service error in process_get_request_log_details: {e}", exc_info=True)
+        raise
+
+
 async def delete_old_request_logs_task():
     """
     定时删除旧的请求日志。

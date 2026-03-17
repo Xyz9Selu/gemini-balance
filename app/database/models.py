@@ -61,6 +61,8 @@ class RequestLog(Base):
     request_content_length = Column(Integer, nullable=True, comment="请求体字节长度")
     response_content_length = Column(Integer, nullable=True, comment="响应体字节长度")
     total_token_count = Column(Integer, nullable=True, comment="总token数(来自API)")
+    request_body = Column(Text, nullable=True, comment="请求体内容(可选记录)")
+    response_body = Column(Text, nullable=True, comment="响应体内容(可选记录)")
 
     def __repr__(self):
         return f"<RequestLog(id='{self.id}', key='{self.api_key[:4]}...', success='{self.is_success}')>"

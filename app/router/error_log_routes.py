@@ -59,6 +59,21 @@ class RequestLogListResponse(BaseModel):
     total: int
 
 
+class RequestLogDetailResponse(BaseModel):
+    id: int
+    api_key: Optional[str] = None
+    model_name: Optional[str] = None
+    is_success: bool
+    status_code: Optional[int] = None
+    latency_ms: Optional[int] = None
+    request_time: Optional[datetime] = None
+    request_content_length: Optional[int] = None
+    response_content_length: Optional[int] = None
+    total_token_count: Optional[int] = None
+    request_body: Optional[str] = None
+    response_body: Optional[str] = None
+
+
 @router.get("/requests", response_model=RequestLogListResponse)
 async def get_request_logs_api(
     request: Request,
@@ -117,6 +132,37 @@ async def get_request_logs_api(
         logger.exception(f"Failed to get request logs list: {str(e)}")
         raise HTTPException(
             status_code=500, detail=f"Failed to get request logs list: {str(e)}"
+        )
+
+
+@router.get("/requests/{log_id}/details", response_model=RequestLogDetailResponse)
+async def get_request_log_detail_api(request: Request, log_id: int = Path(..., ge=1)):
+    """
+    根据 ID 获取请求日志详情 (含 request_body, response_body).
+    """
+    auth_token = request.cookies.get("auth_token")
+    if not auth_token or not verify_auth_token(auth_token):
+        logger.warning(
+            f"Unauthorized access attempt to request log details for ID: {log_id}"
+        )
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    try:
+        log_details = await request_log_service.process_get_request_log_details(
+            log_id=log_id
+        )
+        if not log_details:
+            raise HTTPException(status_code=404, detail="Request log not found")
+
+        return RequestLogDetailResponse(**log_details)
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        logger.exception(
+            f"Failed to get request log details for ID {log_id}: {str(e)}"
+        )
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get request log details: {str(e)}"
         )
 
 

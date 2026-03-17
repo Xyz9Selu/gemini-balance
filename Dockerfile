@@ -15,5 +15,6 @@ ENV TZ='Asia/Shanghai'
 # Expose port
 EXPOSE 8000
 
-# Run the application
+# Run the application. Use a single process only (do not add --workers):
+# KeyManager state (key cycle, failure counts) is in-memory and not shared across processes.
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]

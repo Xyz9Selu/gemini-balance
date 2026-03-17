@@ -33,6 +33,14 @@ def _migrate_request_log_columns():
                 conn.execute(text("ALTER TABLE t_request_log ADD COLUMN response_content_length INTEGER"))
                 conn.commit()
                 logger.info("Added response_content_length to t_request_log")
+            if "request_body" not in columns:
+                conn.execute(text("ALTER TABLE t_request_log ADD COLUMN request_body TEXT"))
+                conn.commit()
+                logger.info("Added request_body to t_request_log")
+            if "response_body" not in columns:
+                conn.execute(text("ALTER TABLE t_request_log ADD COLUMN response_body TEXT"))
+                conn.commit()
+                logger.info("Added response_body to t_request_log")
     except Exception as e:
         logger.warning(f"Request log migration skipped or failed: {e}")
 

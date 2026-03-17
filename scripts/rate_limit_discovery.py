@@ -10,9 +10,13 @@ Run from project root with the app's environment (so DB and config are available
   PYTHONPATH=. python3 scripts/rate_limit_discovery.py [HOURS]
 
 Optional: HOURS = period to analyze (default 168 = 7 days).
-Uses the same database and quota-cycle config as the app (QUOTA_RESET_HOUR, TIMEZONE).
+  FOCUS_HOUR = hour to analyze in detail (e.g. 21 for "around 21:30"). Optional.
+
+RPM: The API enforces RPM over a rolling 60-second window (any 60s span). This script
+reports both "calendar minute" RPM (:00-:59) and "max rolling 60s RPM" where relevant.
 """
 
+import argparse
 import asyncio
 import datetime
 import os
@@ -67,13 +71,103 @@ def mask_key(key: str | None) -> str:
     return f"{key[:4]}...{key[-4:]}"
 
 
+def _max_rolling_60s_rpm(timestamps: list[datetime.datetime]) -> int:
+    """Return max number of requests in any 60-second window. API enforces RPM over a rolling 60s window, not calendar minute."""
+    if not timestamps:
+        return 0
+    times = sorted(timestamps)
+    n = len(times)
+    max_count = 1
+    j = 0
+    for i in range(n):
+        # Count times in (times[i] - 60s, times[i]] (inclusive of times[i])
+        while j < i and times[j] <= times[i] - datetime.timedelta(seconds=60):
+            j += 1
+        max_count = max(max_count, i - j + 1)
+    return max_count
+
+
+def _run_focus_hour_analysis(rows: list, focus_hour: int) -> None:
+    """Analyze request records around focus_hour:30 (minute window 20-40) to infer RPM threshold for 429."""
+    # Note: table RPM = calendar minute (:00-:59). API uses rolling 60s window; we also compute max rolling 60s RPM.
+    # Filter to that hour and minute window (e.g. 21:20 - 21:40)
+    window_rows = [
+        r for r in rows
+        if r["request_time"].hour == focus_hour and 20 <= r["request_time"].minute <= 40
+    ]
+    if not window_rows:
+        print(f"No request records in window {focus_hour}:20 - {focus_hour}:40. Cannot analyze.")
+        return
+
+    # Group by (year, month, day, hour, minute)
+    by_minute: dict[tuple[int, ...], list] = defaultdict(list)
+    for r in window_rows:
+        t = r["request_time"]
+        bucket = (t.year, t.month, t.day, t.hour, t.minute)
+        by_minute[bucket].append(r)
+
+    # Rolling 60s RPM (how API enforces); table below uses calendar minute for readability
+    all_times_in_window = [r["request_time"] for r in window_rows]
+    max_rolling_rpm = _max_rolling_60s_rpm(all_times_in_window)
+    print(f"Focus: {focus_hour}:20 - {focus_hour}:40 (around {focus_hour}:30)")
+    print(f"  (RPM in table = calendar minute :00-:59. API uses rolling 60s window; max rolling 60s RPM in this window = {max_rolling_rpm})")
+    print("-" * 60)
+    print(f"{'Date':<12} {'Time':>6}  {'RPM':>4}  {'429':>4}  {'Success':>8}  {'Failed':>6}")
+    print("-" * 60)
+
+    rpm_when_429: list[int] = []
+    rpm_when_ok: list[int] = []
+    for bucket in sorted(by_minute.keys()):
+        min_rows = by_minute[bucket]
+        rpm = len(min_rows)
+        c429 = sum(1 for r in min_rows if r["status_code"] == 429)
+        success = sum(1 for r in min_rows if r["status_code"] is not None and 200 <= r["status_code"] < 300)
+        failed = rpm - success
+        if c429 > 0:
+            rpm_when_429.append(rpm)
+        else:
+            rpm_when_ok.append(rpm)
+        y, mo, d, h, mi = bucket
+        print(f"{y}-{mo:02d}-{d:02d}  {h:02d}:{mi:02d}  {rpm:>4}  {c429:>4}  {success:>8}  {failed:>6}")
+
+    print()
+    print("Conclusion (RPM vs 429 in that minute):")
+    if rpm_when_429:
+        print(f"  Minutes WITH 429:  RPM = {min(rpm_when_429)} .. {max(rpm_when_429)}  (values: {sorted(set(rpm_when_429))})")
+    else:
+        print("  Minutes WITH 429:  none in this window")
+    if rpm_when_ok:
+        print(f"  Minutes NO 429:    RPM = {min(rpm_when_ok)} .. {max(rpm_when_ok)}  (values: {sorted(set(rpm_when_ok))})")
+    else:
+        print("  Minutes NO 429:    none in this window")
+
+    # Infer threshold: at what RPM does 429 start appearing?
+    if rpm_when_429 and rpm_when_ok:
+        overlap_ok = set(rpm_when_ok)
+        overlap_429 = set(rpm_when_429)
+        only_429 = sorted(overlap_429 - overlap_ok)
+        only_ok = sorted(overlap_ok - overlap_429)
+        min_rpm_with_429 = min(rpm_when_429)
+        max_rpm_no_429 = max(rpm_when_ok)
+        if only_429:
+            print(f"  → 429 occurred at RPM in {only_429} (in this window, these RPMs always had 429).")
+        if only_ok:
+            print(f"  → No 429 at RPM in {only_ok}.")
+        if min_rpm_with_429 <= max_rpm_no_429:
+            print(f"  → Overlap: some minutes at RPM {min_rpm_with_429}–{max_rpm_no_429} had 429, others did not (other factors may matter).")
+        if only_429:
+            print(f"  → Inferred: request concurrency >= {min(only_429)} requests/minute in this window consistently coincided with 429. Stay below that RPM to reduce 429 risk.")
+    elif rpm_when_429:
+        print(f"  → Every minute in this window had at least one 429. Min RPM when 429 occurred: {min(rpm_when_429)}.")
+
+
 async def main() -> None:
-    period_hours = 24 * 7  # default 7 days to capture RPD and 429 patterns
-    if len(sys.argv) > 1:
-        try:
-            period_hours = int(sys.argv[1])
-        except ValueError:
-            pass
+    parser = argparse.ArgumentParser(description="Rate limit discovery from request logs")
+    parser.add_argument("hours", nargs="?", type=int, default=168, help="Period to analyze in hours (default 168)")
+    parser.add_argument("--focus-hour", type=int, default=None, metavar="H", help="Focus on this hour (e.g. 21 for around 21:30); minute window 20-40")
+    args = parser.parse_args()
+    period_hours = args.hours
+    focus_hour = args.focus_hour
     now = datetime.datetime.now()
     start_time = now - datetime.timedelta(hours=period_hours)
     cycle_start = get_quota_cycle_start_time()
@@ -81,6 +175,7 @@ async def main() -> None:
 
     print("Rate limit discovery (from current request records)")
     print("=" * 60)
+    print("RPM: API uses rolling 60s window; script also shows calendar-minute RPM (:00-:59).")
     print(f"DB: {DATABASE_URL.split('@')[-1] if '@' in DATABASE_URL else DATABASE_URL}")
     print(f"Period: last {period_hours}h (since {start_time.isoformat()})")
     print(f"Quota cycle start (RPD): {cycle_start_naive.isoformat()}")
@@ -111,6 +206,11 @@ async def main() -> None:
         print("No request records in the period. Cannot determine rate limit cause.")
         return
 
+    # Optional: focus on a specific hour (e.g. 21 for "around 21:30") to infer RPM threshold for 429
+    if focus_hour is not None:
+        _run_focus_hour_analysis(rows, focus_hour)
+        print()
+
     # Success vs failed (by status_code: 2xx = success, else = failed)
     success_count = sum(
         1 for r in rows
@@ -121,14 +221,18 @@ async def main() -> None:
     print()
 
     # Overall peak RPM (all keys and models combined) and when it occurred
+    # Script uses calendar minute (:00-:59); API uses rolling 60s window — we report both
     global_minute_counts: dict[tuple[int, ...], int] = defaultdict(int)
+    all_request_times = [r["request_time"] for r in rows]
+    max_rolling_60s_rpm = _max_rolling_60s_rpm(all_request_times)
     for r in rows:
         t = r["request_time"]
         bucket = (t.year, t.month, t.day, t.hour, t.minute)
         global_minute_counts[bucket] += 1
     overall_peak_rpm = max(global_minute_counts.values()) if global_minute_counts else 0
     peak_minutes = [b for b, c in global_minute_counts.items() if c == overall_peak_rpm]
-    print(f"Overall peak RPM (all keys, all models): {overall_peak_rpm}")
+    print(f"Overall peak RPM (all keys, all models): {overall_peak_rpm} (calendar minute :00-:59)")
+    print(f"  Max rolling 60s RPM (API-like window): {max_rolling_60s_rpm}")
     if peak_minutes:
         for b in sorted(peak_minutes)[:5]:
             print(f"  Peak minute: {b[0]}-{b[1]:02d}-{b[2]:02d} {b[3]:02d}:{b[4]:02d}")
@@ -168,7 +272,7 @@ async def main() -> None:
         failed_in_429_min = len(rows_in_429_minutes) - success_in_429_min
         print(f"Minutes with ≥1 × 429: {len(minute_has_429)} minute(s)")
         print(f"  Across those minutes: Total: {len(rows_in_429_minutes)}, Success (2xx): {success_in_429_min}, Failed: {failed_in_429_min}")
-        # Per-minute breakdown (up to 20 minutes)
+        # Per-minute breakdown (all minutes with ≥1 × 429)
         per_minute = []
         for b in sorted(minute_has_429):
             min_rows = [
@@ -180,12 +284,98 @@ async def main() -> None:
             f = len(min_rows) - s
             c429 = sum(1 for r in min_rows if r["status_code"] == 429)
             per_minute.append((b, len(min_rows), s, f, c429))
-        for b, total, s, f, c429 in per_minute[:20]:
+        for b, total, s, f, c429 in per_minute:
             print(f"    {b[0]}-{b[1]:02d}-{b[2]:02d} {b[3]:02d}:{b[4]:02d}  total={total}  success={s}  failed={f}  429={c429}")
-        if len(per_minute) > 20:
-            print(f"    ... and {len(per_minute) - 20} more minute(s)")
     else:
         print("Minutes with ≥1 × 429: 0 (no 429 in period)")
+    print()
+
+    # Rolling 60s request count at the moment each 429 occurs (window [T-60s, T] inclusive)
+    rows_429 = [r for r in rows if r["status_code"] == 429]
+    if rows_429:
+        rows_429_sorted = sorted(rows_429, key=lambda r: r["request_time"])
+        print("Rolling 60s window when 429 occurs (request count in [T-60s, T] at each 429):")
+        print("-" * 60)
+        for r in rows_429_sorted:
+            t = r["request_time"]
+            window_start = t - datetime.timedelta(seconds=60)
+            count_in_window = sum(1 for row in rows if window_start <= row["request_time"] <= t)
+            print(f"  {t.strftime('%Y-%m-%d %H:%M:%S')}  rolling_60s_count={count_in_window}")
+        first = rows_429_sorted[0]
+        t0 = first["request_time"]
+        window_start0 = t0 - datetime.timedelta(seconds=60)
+        count_first = sum(1 for row in rows if window_start0 <= row["request_time"] <= t0)
+        print("-" * 60)
+        print(f"  First 429 at {t0.strftime('%Y-%m-%d %H:%M:%S')}  →  requests in rolling 60s = {count_first}")
+    else:
+        print("Rolling 60s when 429 occurs: no 429 in period.")
+    print()
+
+    # For each calendar day with ≥1 × 429: first 429 that day, then list ALL requests in 60s window [T-60s, T]
+    rows_429_by_day: dict[tuple[int, int, int], list] = defaultdict(list)
+    for r in rows:
+        if r["status_code"] == 429:
+            t = r["request_time"]
+            rows_429_by_day[(t.year, t.month, t.day)].append(r)
+    if rows_429_by_day:
+        print("All requests in 60s window when first 429 occurs (per calendar day):")
+        print("  (For each day with 429, window = [first_429_time - 60s, first_429_time])")
+        print()
+        for day_key in sorted(rows_429_by_day.keys()):
+            day_429 = rows_429_by_day[day_key]
+            first_429 = min(day_429, key=lambda r: r["request_time"])
+            t_end = first_429["request_time"]
+            window_start = t_end - datetime.timedelta(seconds=60)
+            in_window = [r for r in rows if window_start <= r["request_time"] <= t_end]
+            in_window.sort(key=lambda r: r["request_time"])
+            y, mo, d = day_key
+            print(f"  Day {y}-{mo:02d}-{d:02d}: first 429 at {t_end.strftime('%H:%M:%S')}")
+            print(f"    Request count in 60s window: {len(in_window)}")
+            print(f"    {'Time':<12} {'Key':<14} {'Model':<28} {'Status'}")
+            print("    " + "-" * 68)
+            for r in in_window:
+                ts = r["request_time"].strftime("%H:%M:%S")
+                key = mask_key(r["api_key"])
+                model = (r["model_name"] or "-")[:28]
+                status = r["status_code"] if r["status_code"] is not None else "-"
+                print(f"    {ts:<12} {key:<14} {model:<28} {status}")
+            print()
+    else:
+        print("All requests in 60s at first 429 (per day): no 429 in period.")
+    print()
+
+    # For each calendar week (ISO) with ≥1 × 429: first 429 that week, then list ALL requests in 60s window [T-60s, T]
+    rows_429_by_week: dict[tuple[int, int], list] = defaultdict(list)
+    for r in rows:
+        if r["status_code"] == 429:
+            t = r["request_time"]
+            iso = t.isocalendar()
+            rows_429_by_week[(iso.year, iso.week)].append(r)
+    if rows_429_by_week:
+        print("All requests in 60s window when first 429 occurs (per calendar week, ISO):")
+        print("  (For each week with 429, window = [first_429_time - 60s, first_429_time])")
+        print()
+        for week_key in sorted(rows_429_by_week.keys()):
+            week_429 = rows_429_by_week[week_key]
+            first_429 = min(week_429, key=lambda r: r["request_time"])
+            t_end = first_429["request_time"]
+            window_start = t_end - datetime.timedelta(seconds=60)
+            in_window = [r for r in rows if window_start <= r["request_time"] <= t_end]
+            in_window.sort(key=lambda r: r["request_time"])
+            y, w = week_key
+            print(f"  Week {y}-W{w:02d}: first 429 at {t_end.strftime('%Y-%m-%d %H:%M:%S')}")
+            print(f"    Request count in 60s window: {len(in_window)}")
+            print(f"    {'DateTime':<20} {'Key':<14} {'Model':<28} {'Status'}")
+            print("    " + "-" * 76)
+            for r in in_window:
+                ts = r["request_time"].strftime("%Y-%m-%d %H:%M:%S")
+                key = mask_key(r["api_key"])
+                model = (r["model_name"] or "-")[:28]
+                status = r["status_code"] if r["status_code"] is not None else "-"
+                print(f"    {ts:<20} {key:<14} {model:<28} {status}")
+            print()
+    else:
+        print("All requests in 60s at first 429 (per week): no 429 in period.")
     print()
 
     # Group by (key, model)
@@ -238,7 +428,7 @@ async def main() -> None:
 
     results.sort(key=lambda x: (-x["count_429"], -x["request_count"]))
 
-    # Print table
+    # Print table (RPM column = max requests in a calendar minute :00-:59 for that key/model)
     print(f"{'Key':<14} {'Model':<28} {'RPM':>4} {'Lim':>4} {'RPD':>5} {'Lim':>5} {'TPM':>8} {'429':>4} {'Req':>5}  Exceeded")
     print("-" * 100)
     for r in results:

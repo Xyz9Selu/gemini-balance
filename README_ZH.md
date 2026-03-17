@@ -126,6 +126,17 @@ app/
     ```
     应用启动后，访问 `http://localhost:8000`。
 
+### 部署：实例与进程数量
+
+**有效配置：单进程、单容器/单实例。**
+
+密钥轮询与每个密钥的失败计数保存在进程内存中（每个进程一个 `KeyManager`）。为保证负载均衡与失败统计正确，必须只运行 **一个** 应用进程：
+
+*   **不要** 使用 `uvicorn ... --workers N`（N > 1）。每个 worker 会有独立的密钥轮询与失败计数。
+*   **不要** 用多容器/多副本横向扩展（例如 `docker-compose up -d --scale gemini-balance=2` 或 Kubernetes replicas > 1），除非你接受每个副本独立轮询、密钥会在多个副本间重复使用。
+
+默认的 Docker 与 docker-compose 配置仅运行一个 uvicorn 进程，属于有效配置。
+
 ---
 
 ## ⚙️ API 端点

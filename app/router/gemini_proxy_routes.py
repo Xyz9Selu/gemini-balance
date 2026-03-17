@@ -25,6 +25,7 @@ from app.database.services import add_error_log, add_request_log, get_file_api_k
 from app.log.logger import get_gemini_logger
 from app.service.files.local_file_resolver import resolve_local_files_in_body
 from app.service.key.key_manager import KeyManager, get_key_manager_instance
+from app.service.rate_limit.model_rpm_limiter import model_rpm_limiter
 from app.utils.helpers import extract_total_token_count_from_gemini_response, redact_key_for_logging
 
 logger = get_gemini_logger()
@@ -166,6 +167,19 @@ def _extract_file_references_from_body(body: bytes) -> list[str]:
     return file_names
 
 
+def _prepare_body_for_request_log(body: Optional[bytes], max_bytes: int) -> Optional[str]:
+    """Decode and truncate body for request log storage. Returns None if body is None or empty."""
+    if not body:
+        return None
+    try:
+        s = body.decode("utf-8", errors="replace")
+        if len(s) > max_bytes:
+            s = s[:max_bytes] + "\n...(truncated)"
+        return s
+    except Exception:
+        return None
+
+
 async def _proxy_once(
     request: Request,
     upstream_url: str,
@@ -248,10 +262,15 @@ async def gemini_v1beta_proxy(
 
     # Capture model name for logs/stats; when not extractable, use request path
     _path_for_log = f"v1beta/{upstream_path}" if upstream_path else "v1beta/"
+    extracted_model = _extract_model_name_from_path(f"/v1beta/{upstream_path}")
     model_name = (
-        _extract_model_name_from_path(f"/v1beta/{upstream_path}")
+        extracted_model
         or (_path_for_log[:100] if len(_path_for_log) <= 100 else _path_for_log[:97] + "...")
     )
+
+    # Per-model RPM limit: wait until a slot is available (skip when no model in path)
+    if settings.MODEL_RPM_LIMIT > 0 and extracted_model:
+        await model_rpm_limiter.acquire(extracted_model, settings.MODEL_RPM_LIMIT)
 
     last_error: Optional[str] = None
     last_status: Optional[int] = None
@@ -340,6 +359,7 @@ async def gemini_v1beta_proxy(
                 )
                 latency_ms = int((time.perf_counter() - start_time) * 1000)
                 req_len = len(body_to_send) if body_to_send else None
+                req_body_str = _prepare_body_for_request_log(body_to_send or request_body, settings.REQUEST_LOG_BODY_MAX_BYTES) if settings.REQUEST_LOG_RECORD_BODY else None
                 await add_request_log(
                     model_name=model_name,
                     api_key=api_key,
@@ -348,6 +368,7 @@ async def gemini_v1beta_proxy(
                     latency_ms=latency_ms,
                     request_time=attempt_time,
                     request_content_length=req_len,
+                    request_body=req_body_str,
                 )
                 api_key = await key_manager.handle_api_failure(api_key, retries)
                 if not api_key:
@@ -379,6 +400,8 @@ async def gemini_v1beta_proxy(
                 token_count = None
                 if is_success and body and not stream:
                     token_count = extract_total_token_count_from_gemini_response(response_body=body)
+                req_body_str = _prepare_body_for_request_log(body_to_send, settings.REQUEST_LOG_BODY_MAX_BYTES) if settings.REQUEST_LOG_RECORD_BODY else None
+                resp_body_str = _prepare_body_for_request_log(body, settings.REQUEST_LOG_BODY_MAX_BYTES) if settings.REQUEST_LOG_RECORD_BODY else None
                 await add_request_log(
                     model_name=model_name,
                     api_key=api_key,
@@ -389,6 +412,8 @@ async def gemini_v1beta_proxy(
                     request_content_length=req_len,
                     response_content_length=resp_len,
                     total_token_count=token_count,
+                    request_body=req_body_str,
+                    response_body=resp_body_str,
                 )
 
                 if stream and stream_iter is not None:
@@ -401,6 +426,9 @@ async def gemini_v1beta_proxy(
                 return Response(content=body, status_code=status_code, headers=headers)
 
             # Retryable status: log error and switch key (unless last attempt)
+            # If upstream is rate limiting this model, apply a cooldown for subsequent requests.
+            if status_code == 429 and extracted_model:
+                await model_rpm_limiter.trigger_cooldown(extracted_model, 60.0)
             last_error = body.decode("utf-8", errors="replace") if body else f"HTTP {status_code}"
             request_msg_parsed = None
             if settings.ERROR_LOG_RECORD_REQUEST_BODY and body_to_send:
@@ -423,6 +451,8 @@ async def gemini_v1beta_proxy(
             latency_ms = int((time.perf_counter() - start_time) * 1000)
             req_len = len(body_to_send) if body_to_send else None
             resp_len = len(body) if body else None
+            req_body_str = _prepare_body_for_request_log(body_to_send, settings.REQUEST_LOG_BODY_MAX_BYTES) if settings.REQUEST_LOG_RECORD_BODY else None
+            resp_body_str = _prepare_body_for_request_log(body, settings.REQUEST_LOG_BODY_MAX_BYTES) if settings.REQUEST_LOG_RECORD_BODY else None
             await add_request_log(
                 model_name=model_name,
                 api_key=api_key,
@@ -432,6 +462,8 @@ async def gemini_v1beta_proxy(
                 request_time=attempt_time,
                 request_content_length=req_len,
                 response_content_length=resp_len,
+                request_body=req_body_str,
+                response_body=resp_body_str,
             )
 
             # If we're using a file-specific API key (Gemini file), don't switch keys on retry.
@@ -474,6 +506,7 @@ async def gemini_v1beta_proxy(
             )
             latency_ms = int((time.perf_counter() - start_time) * 1000)
             req_len = len(request_body or body_to_send) if (request_body or body_to_send) else None
+            req_body_str = _prepare_body_for_request_log(request_body or body_to_send, settings.REQUEST_LOG_BODY_MAX_BYTES) if settings.REQUEST_LOG_RECORD_BODY else None
             await add_request_log(
                 model_name=model_name,
                 api_key=api_key,
@@ -482,6 +515,7 @@ async def gemini_v1beta_proxy(
                 latency_ms=latency_ms,
                 request_time=attempt_time,
                 request_content_length=req_len,
+                request_body=req_body_str,
             )
             # If we're using a file-specific API key (Gemini file), don't switch keys on retry
             if has_file_references and not has_local_file_refs and file_specific_api_key and api_key == file_specific_api_key:

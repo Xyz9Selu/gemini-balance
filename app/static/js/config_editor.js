@@ -583,6 +583,9 @@ async function initConfig() {
     if (typeof config.RETRY_SLEEP_SECONDS === "undefined") {
       config.RETRY_SLEEP_SECONDS = 2;
     }
+    if (typeof config.MODEL_RPM_LIMIT === "undefined") {
+      config.MODEL_RPM_LIMIT = 20;
+    }
     // --- 结束：处理自动删除错误日志配置的默认值 ---
 
     // --- 配额重置时间默认值 ---
@@ -619,6 +622,7 @@ async function initConfig() {
       VERTEX_API_KEYS: [], // 确保默认值存在
       VERTEX_EXPRESS_BASE_URL: "", // 确保默认值存在
       CUSTOM_HEADERS: {},
+      MODEL_RPM_LIMIT: 20,
       AUTO_DELETE_ERROR_LOGS_ENABLED: false,
       AUTO_DELETE_ERROR_LOGS_DAYS: 7, // 新增默认值
       AUTO_DELETE_REQUEST_LOGS_ENABLED: false, // 新增默认值

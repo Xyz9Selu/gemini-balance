@@ -1468,31 +1468,60 @@ function initializeDropdownMenu() {
 // --- Chart: API success/failure over time ---
 let apiStatsChart = null;
 
-function buildChartConfig(labels, successData, failureData) {
+function getModelRpmLimitPerBucket(period) {
+  const canvas = document.getElementById('apiStatsChart');
+  if (!canvas) return 0;
+  const raw = canvas.dataset.modelRpmLimit;
+  const rpm = parseInt(raw, 10);
+  if (!rpm || rpm <= 0) return 0;
+  // period buckets: 1h -> minute, 8h/24h -> hour
+  if (period === '1h' || period === '1m') {
+    return rpm;
+  }
+  if (period === '8h' || period === '24h') {
+    return rpm * 60; // 每小时上限
+  }
+  return rpm;
+}
+
+function buildChartConfig(labels, successData, failureData, period) {
+  const limitPerBucket = getModelRpmLimitPerBucket(period);
+  const datasets = [
+    {
+      label: '成功',
+      data: successData,
+      borderColor: 'rgba(16,185,129,1)', // emerald-500
+      backgroundColor: 'rgba(16,185,129,0.15)',
+      tension: 0.3,
+      fill: true,
+      pointRadius: 2,
+    },
+    {
+      label: '失败',
+      data: failureData,
+      borderColor: 'rgba(239,68,68,1)', // red-500
+      backgroundColor: 'rgba(239,68,68,0.15)',
+      tension: 0.3,
+      fill: true,
+      pointRadius: 2,
+    },
+  ];
+  if (limitPerBucket > 0) {
+    datasets.push({
+      label: '速率限制',
+      data: labels.map(() => limitPerBucket),
+      borderColor: 'rgba(59,130,246,1)', // blue-500
+      borderDash: [6, 3],
+      fill: false,
+      pointRadius: 0,
+    });
+  }
+
   return {
     type: 'line',
     data: {
       labels,
-      datasets: [
-        {
-          label: '成功',
-          data: successData,
-          borderColor: 'rgba(16,185,129,1)', // emerald-500
-          backgroundColor: 'rgba(16,185,129,0.15)',
-          tension: 0.3,
-          fill: true,
-          pointRadius: 2,
-        },
-        {
-          label: '失败',
-          data: failureData,
-          borderColor: 'rgba(239,68,68,1)', // red-500
-          backgroundColor: 'rgba(239,68,68,0.15)',
-          tension: 0.3,
-          fill: true,
-          pointRadius: 2,
-        },
-      ],
+      datasets,
     },
     options: {
       responsive: true,
@@ -1577,7 +1606,7 @@ async function renderApiChart(period) {
   try {
     const details = await fetchPeriodDetails(period);
     const { labels, successData, failureData } = bucketizeDetails(period, details || []);
-    const cfg = buildChartConfig(labels, successData, failureData);
+    const cfg = buildChartConfig(labels, successData, failureData, period);
     if (apiStatsChart) {
       apiStatsChart.destroy();
     }

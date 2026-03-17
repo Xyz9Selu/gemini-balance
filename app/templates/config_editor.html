@@ -1136,6 +1136,24 @@ endblock %} {% block head_extra_styles %}
             class="w-full px-4 py-3 rounded-lg form-input-themed"
           />
         </div>
+
+        <!-- 每模型 RPM 限制 -->
+        <div class="mb-6">
+          <label
+            for="MODEL_RPM_LIMIT"
+            class="block font-semibold mb-2 text-gray-700"
+            >每模型 RPM 限制
+            <i class="fas fa-question-circle text-gray-400 ml-1 cursor-help" title="每个模型每分钟请求数上限；0 表示不限制。超出时请求将等待而非被拒绝"></i>
+          </label>
+          <input
+            type="number"
+            id="MODEL_RPM_LIMIT"
+            name="MODEL_RPM_LIMIT"
+            min="0"
+            max="1000"
+            class="w-full px-4 py-3 rounded-lg form-input-themed"
+          />
+        </div>
       </div>
 
       <!-- 模型相关配置 -->

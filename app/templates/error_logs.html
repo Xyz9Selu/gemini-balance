@@ -1061,10 +1061,11 @@ endblock %} {% block head_extra_styles %}
               <th class="px-5 py-3 font-semibold text-gray-700">请求体(B)</th>
               <th class="px-5 py-3 font-semibold text-gray-700">响应体(B)</th>
               <th class="px-5 py-3 font-semibold text-gray-700">Token</th>
+              <th class="px-5 py-3 font-semibold text-gray-700">请求时间</th>
               <th
                 class="px-5 py-3 font-semibold text-gray-700 rounded-tr-lg"
               >
-                请求时间
+                操作
               </th>
             </tr>
           </thead>
@@ -1304,6 +1305,109 @@ endblock %} {% block head_extra_styles %}
         <button
           type="button"
           id="closeModalFooterBtn"
+          class="bg-gray-500 hover:bg-gray-600 text-white px-6 py-2 rounded-lg font-medium transition"
+        >
+          关闭
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 请求记录详情模态框 -->
+<div id="requestLogDetailModal" class="modal">
+  <div
+    class="w-full max-w-6xl mx-auto rounded-2xl shadow-2xl overflow-hidden animate-fade-in"
+    style="
+      background-color: #ffffff;
+      color: #374151;
+      border: 1px solid #e5e7eb;
+    "
+  >
+    <div class="p-6">
+      <div
+        class="flex justify-between items-center pb-4 mb-4"
+        style="border-bottom: 1px solid #e5e7eb"
+      >
+        <h2 class="text-xl font-bold text-gray-800">请求记录详情</h2>
+        <button
+          id="closeRequestLogDetailModalBtn"
+          class="text-gray-600 hover:text-gray-800 text-xl"
+        >
+          &times;
+        </button>
+      </div>
+
+      <div class="space-y-4 max-h-[60vh] overflow-y-auto p-1">
+        <div class="grid grid-cols-2 gap-4">
+          <div class="p-4 rounded-lg relative group" style="background-color: #f8fafc">
+            <h6 class="text-sm font-semibold text-blue-600 mb-1">API 密钥:</h6>
+            <p id="modalReqLogKey" class="font-mono text-sm pr-8 text-gray-700"></p>
+          </div>
+          <div class="p-4 rounded-lg relative group" style="background-color: #f8fafc">
+            <h6 class="text-sm font-semibold text-blue-600 mb-1">模型名称:</h6>
+            <p id="modalReqLogModel" class="font-medium pr-8 text-gray-700"></p>
+          </div>
+          <div class="p-4 rounded-lg relative group" style="background-color: #f8fafc">
+            <h6 class="text-sm font-semibold text-blue-600 mb-1">成功/失败:</h6>
+            <p id="modalReqLogSuccess" class="font-medium pr-8 text-gray-700"></p>
+          </div>
+          <div class="p-4 rounded-lg relative group" style="background-color: #f8fafc">
+            <h6 class="text-sm font-semibold text-blue-600 mb-1">状态码:</h6>
+            <p id="modalReqLogStatusCode" class="font-medium pr-8 text-gray-700"></p>
+          </div>
+          <div class="p-4 rounded-lg relative group" style="background-color: #f8fafc">
+            <h6 class="text-sm font-semibold text-blue-600 mb-1">耗时(ms):</h6>
+            <p id="modalReqLogLatency" class="font-medium pr-8 text-gray-700"></p>
+          </div>
+          <div class="p-4 rounded-lg relative group" style="background-color: #f8fafc">
+            <h6 class="text-sm font-semibold text-blue-600 mb-1">请求时间:</h6>
+            <p id="modalReqLogTime" class="font-medium pr-8 text-gray-700"></p>
+          </div>
+        </div>
+
+        <div class="p-4 rounded-lg relative group" style="background-color: #f8fafc">
+          <h6 class="text-sm font-semibold text-blue-600 mb-1">请求体 (Request Body):</h6>
+          <pre
+            id="modalReqLogRequestBody"
+            class="font-mono text-sm p-3 rounded overflow-x-auto whitespace-pre-wrap max-h-48 overflow-y-auto"
+            style="background-color: #f1f5f9; color: #374151"
+          ></pre>
+          <button
+            class="copy-btn absolute top-2 right-2 hover:bg-gray-200 text-gray-600 p-1.5 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+            style="background-color: #e2e8f0"
+            data-target="modalReqLogRequestBody"
+            title="复制请求体"
+          >
+            <i class="far fa-copy"></i>
+          </button>
+        </div>
+
+        <div class="p-4 rounded-lg relative group" style="background-color: #f8fafc">
+          <h6 class="text-sm font-semibold text-blue-600 mb-1">响应体 (Response Body):</h6>
+          <pre
+            id="modalReqLogResponseBody"
+            class="font-mono text-sm p-3 rounded overflow-x-auto whitespace-pre-wrap max-h-48 overflow-y-auto"
+            style="background-color: #f1f5f9; color: #374151"
+          ></pre>
+          <button
+            class="copy-btn absolute top-2 right-2 hover:bg-gray-200 text-gray-600 p-1.5 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+            style="background-color: #e2e8f0"
+            data-target="modalReqLogResponseBody"
+            title="复制响应体"
+          >
+            <i class="far fa-copy"></i>
+          </button>
+        </div>
+      </div>
+
+      <div
+        class="flex justify-end mt-6 pt-4"
+        style="border-top: 1px solid #e5e7eb"
+      >
+        <button
+          type="button"
+          id="closeRequestLogDetailFooterBtn"
           class="bg-gray-500 hover:bg-gray-600 text-white px-6 py-2 rounded-lg font-medium transition"
         >
           关闭

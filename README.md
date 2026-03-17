@@ -125,6 +125,17 @@ app/
     ```
     Access the application at `http://localhost:8000`.
 
+### Deployment: instances and processes
+
+**Valid setup: 1 process, 1 container/instance.**
+
+Key round-robin and per-key failure counts are kept in memory (one `KeyManager` per process). For correct load distribution and failure handling you must run **exactly one** app process:
+
+*   **Do not** use `uvicorn ... --workers N` (N > 1). Each worker would have its own key cycle and failure counts.
+*   **Do not** scale with multiple containers/replicas (e.g. `docker-compose up -d --scale gemini-balance=2` or Kubernetes replicas > 1) unless you accept that each replica will round-robin independently and keys will be reused across replicas.
+
+The default Docker and docker-compose setup runs a single uvicorn process and is valid.
+
 ---
 
 ## ⚙️ API Endpoints
