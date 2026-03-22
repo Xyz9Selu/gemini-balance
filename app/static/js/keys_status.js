@@ -1468,24 +1468,7 @@ function initializeDropdownMenu() {
 // --- Chart: API success/failure over time ---
 let apiStatsChart = null;
 
-function getModelRpmLimitPerBucket(period) {
-  const canvas = document.getElementById('apiStatsChart');
-  if (!canvas) return 0;
-  const raw = canvas.dataset.modelRpmLimit;
-  const rpm = parseInt(raw, 10);
-  if (!rpm || rpm <= 0) return 0;
-  // period buckets: 1h -> minute, 8h/24h -> hour
-  if (period === '1h' || period === '1m') {
-    return rpm;
-  }
-  if (period === '8h' || period === '24h') {
-    return rpm * 60; // 每小时上限
-  }
-  return rpm;
-}
-
-function buildChartConfig(labels, successData, failureData, period) {
-  const limitPerBucket = getModelRpmLimitPerBucket(period);
+function buildChartConfig(labels, successData, failureData) {
   const datasets = [
     {
       label: '成功',
@@ -1506,16 +1489,6 @@ function buildChartConfig(labels, successData, failureData, period) {
       pointRadius: 2,
     },
   ];
-  if (limitPerBucket > 0) {
-    datasets.push({
-      label: '速率限制',
-      data: labels.map(() => limitPerBucket),
-      borderColor: 'rgba(59,130,246,1)', // blue-500
-      borderDash: [6, 3],
-      fill: false,
-      pointRadius: 0,
-    });
-  }
 
   return {
     type: 'line',
@@ -1606,7 +1579,7 @@ async function renderApiChart(period) {
   try {
     const details = await fetchPeriodDetails(period);
     const { labels, successData, failureData } = bucketizeDetails(period, details || []);
-    const cfg = buildChartConfig(labels, successData, failureData, period);
+    const cfg = buildChartConfig(labels, successData, failureData);
     if (apiStatsChart) {
       apiStatsChart.destroy();
     }
