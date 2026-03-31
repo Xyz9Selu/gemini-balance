@@ -74,7 +74,7 @@ def setup_page_routes(app: FastAPI) -> None:
     @app.get("/", response_class=HTMLResponse)
     async def auth_page(request: Request):
         """认证页面"""
-        return templates.TemplateResponse("auth.html", {"request": request})
+        return templates.TemplateResponse(request, "auth.html")
 
     @app.post("/auth")
     async def authenticate(request: Request):
@@ -125,9 +125,9 @@ def setup_page_routes(app: FastAPI) -> None:
 
             logger.info(f"Keys status retrieved successfully. Total keys: {total_keys}")
             return templates.TemplateResponse(
+                request,
                 "keys_status.html",
                 {
-                    "request": request,
                     "valid_keys": {},
                     "invalid_keys": {},
                     "total_keys": total_keys,
@@ -141,9 +141,9 @@ def setup_page_routes(app: FastAPI) -> None:
             # Even if there's an error, render the page with whatever data is available
             # or with empty/default values, so the frontend can still load.
             return templates.TemplateResponse(
+                request,
                 "keys_status.html",
                 {
-                    "request": request,
                     "valid_keys": {},
                     "invalid_keys": {},
                     "total_keys": 0,
@@ -168,9 +168,7 @@ def setup_page_routes(app: FastAPI) -> None:
                 return RedirectResponse(url="/", status_code=302)
 
             logger.info("Config page accessed successfully")
-            return templates.TemplateResponse(
-                "config_editor.html", {"request": request}
-            )
+            return templates.TemplateResponse(request, "config_editor.html")
         except Exception as e:
             logger.error(f"Error accessing config page: {str(e)}")
             raise
@@ -185,7 +183,7 @@ def setup_page_routes(app: FastAPI) -> None:
                 return RedirectResponse(url="/", status_code=302)
 
             logger.info("Logs page accessed successfully")
-            return templates.TemplateResponse("error_logs.html", {"request": request})
+            return templates.TemplateResponse(request, "error_logs.html")
         except Exception as e:
             logger.error(f"Error accessing logs page: {str(e)}")
             raise
@@ -200,7 +198,7 @@ def setup_page_routes(app: FastAPI) -> None:
                 return RedirectResponse(url="/", status_code=302)
 
             logger.info("Model stats page accessed successfully")
-            return templates.TemplateResponse("model_stats.html", {"request": request})
+            return templates.TemplateResponse(request, "model_stats.html")
         except Exception as e:
             logger.error(f"Error accessing model stats page: {str(e)}")
             raise
