@@ -3,7 +3,8 @@
 """
 import json
 import re
-from typing import List, Optional, Tuple
+import asyncio
+from typing import Dict, List, Optional, Tuple
 
 import httpx
 
@@ -15,17 +16,19 @@ logger = get_files_logger()
 
 LOCAL_FILE_PREFIX = "files/local/"
 BASE_URL = "https://generativelanguage.googleapis.com/upload/v1beta/files"
+FILE_STATE_POLL_INTERVAL_SECONDS = 2.0
+FILE_STATE_MAX_WAIT_SECONDS = 300.0
 
 
 def _extract_file_refs_from_body(body: bytes) -> List[str]:
-    """從請求體中提取所有 fileData.fileUri 引用（含 files/ 和 files/local/）。"""
+    """從請求體中提取所有 fileData/file_data 引用（含 files/ 和 files/local/）。"""
     refs = []
     try:
         payload = json.loads(body)
         for content in payload.get("contents", []):
             for part in content.get("parts", []) or []:
-                fd = part.get("fileData") or {}
-                uri = fd.get("fileUri") or ""
+                fd = part.get("fileData") or part.get("file_data") or {}
+                uri = fd.get("fileUri") or fd.get("file_uri") or ""
                 if not uri:
                     continue
                 if uri.startswith("files/"):
@@ -48,12 +51,13 @@ async def _upload_bytes_to_gemini(
     mime_type: str,
     api_key: str,
     display_name: Optional[str] = None,
-) -> str:
+) -> Dict[str, str]:
     """
-    將字節數組上傳到 Gemini Files API，返回 file name (files/{id})。
+    將字節數組上傳到 Gemini Files API，等待處理完成，返回 file metadata。
     """
     # Use HTTP/1.1 so X-Goog-Upload-* headers keep casing (Gemini may require it).
-    async with httpx.AsyncClient(timeout=300.0, http2=False) as client:
+    timeout = max(float(settings.TIME_OUT), 300.0)
+    async with httpx.AsyncClient(timeout=timeout, http2=False) as client:
         init_headers = {
             "X-Goog-Upload-Protocol": "resumable",
             "X-Goog-Upload-Command": "start",
@@ -91,10 +95,56 @@ async def _upload_bytes_to_gemini(
             logger.error(f"Gemini upload finalize failed: {upload_resp.status_code} - {upload_resp.text}")
             raise RuntimeError(f"Gemini upload finalize failed: {upload_resp.status_code}")
         data = upload_resp.json()
-        file_name = (data.get("file") or {}).get("name")
+        file_data = data.get("file") or {}
+        file_name = file_data.get("name")
         if not file_name or not file_name.startswith("files/"):
             raise RuntimeError(f"Invalid Gemini file response: {data}")
-        return file_name
+
+        file_data = await _wait_for_gemini_file_active(
+            client=client,
+            file_name=file_name,
+            api_key=api_key,
+            initial_file=file_data,
+        )
+        return {
+            "name": file_data["name"],
+            "uri": file_data.get("uri") or f"{settings.BASE_URL.rstrip('/')}/{file_data['name']}",
+            "mime_type": file_data.get("mimeType") or mime_type,
+        }
+
+
+async def _wait_for_gemini_file_active(
+    client: httpx.AsyncClient,
+    file_name: str,
+    api_key: str,
+    initial_file: Optional[Dict[str, str]] = None,
+) -> Dict[str, str]:
+    """Poll Gemini Files API until a file is ACTIVE before analysis."""
+    file_data = initial_file or {}
+    state = file_data.get("state")
+    if state == "ACTIVE":
+        return file_data
+    if state == "FAILED":
+        raise RuntimeError(f"Gemini file processing failed: {file_name}")
+
+    deadline = asyncio.get_running_loop().time() + FILE_STATE_MAX_WAIT_SECONDS
+    file_url = f"{settings.BASE_URL.rstrip('/')}/{file_name}"
+    while asyncio.get_running_loop().time() < deadline:
+        await asyncio.sleep(FILE_STATE_POLL_INTERVAL_SECONDS)
+        resp = await client.get(file_url, params={"key": api_key})
+        if resp.status_code != 200:
+            logger.warning(
+                f"Gemini file state poll failed for {file_name}: {resp.status_code} - {resp.text}"
+            )
+            continue
+        file_data = resp.json()
+        state = file_data.get("state")
+        if state == "ACTIVE":
+            return file_data
+        if state == "FAILED":
+            raise RuntimeError(f"Gemini file processing failed: {file_name}")
+
+    raise TimeoutError(f"Timed out waiting for Gemini file to become ACTIVE: {file_name}")
 
 
 def _replace_file_refs_in_json(body_bytes: bytes, mapping: dict) -> bytes:
@@ -105,17 +155,23 @@ def _replace_file_refs_in_json(body_bytes: bytes, mapping: dict) -> bytes:
     base_url_prefix = settings.BASE_URL.rstrip("/") + "/"
     for content in payload.get("contents", []) or []:
         for part in (content.get("parts") or []):
-            fd = part.get("fileData")
-            if not fd or "fileUri" not in fd:
+            fd = part.get("fileData") or part.get("file_data")
+            if not fd:
                 continue
-            uri = fd["fileUri"]
-            if uri in mapping:
-                fd["fileUri"] = mapping[uri]
+            uri_key = "fileUri" if "fileUri" in fd else "file_uri"
+            mime_key = "mimeType" if "fileData" in part else "mime_type"
+            uri = fd.get(uri_key)
+            if not uri:
                 continue
-            if uri.startswith(base_url_prefix):
-                rest = uri[len(base_url_prefix) :]
-                if rest in mapping:
-                    fd["fileUri"] = mapping[rest]
+            replacement = mapping.get(uri)
+            if not replacement and uri.startswith(base_url_prefix):
+                replacement = mapping.get(uri[len(base_url_prefix) :])
+            if not replacement:
+                continue
+
+            fd[uri_key] = replacement["uri"]
+            if replacement.get("mime_type") and not fd.get(mime_key):
+                fd[mime_key] = replacement["mime_type"]
     return json.dumps(payload).encode("utf-8")
 
 
@@ -133,8 +189,6 @@ async def resolve_local_files_in_body(
     if not local_refs:
         return body, api_key
 
-    # Gemini expects fileUri to be a full File API URL, not the short "files/{id}" form.
-    file_api_base = settings.BASE_URL.rstrip("/")
     mapping = {}
     for name in local_refs:
         if name in mapping:
@@ -144,16 +198,15 @@ async def resolve_local_files_in_body(
             logger.warning(f"Local file not found or expired: {name}")
             raise ValueError(f"Local file not found or expired: {name}")
         file_bytes, mime_type = result
-        gemini_name = await _upload_bytes_to_gemini(
+        gemini_file = await _upload_bytes_to_gemini(
             file_bytes,
             mime_type,
             api_key,
             display_name=None,
         )
-        full_file_uri = f"{file_api_base}/{gemini_name}"
-        mapping[name] = full_file_uri
+        mapping[name] = gemini_file
         if settings.BASE_URL:
             full_uri = f"{settings.BASE_URL.rstrip('/')}/{name}"
-            mapping[full_uri] = full_file_uri
+            mapping[full_uri] = gemini_file
     new_body = _replace_file_refs_in_json(body, mapping)
     return new_body, api_key

@@ -36,12 +36,14 @@ def _extract_file_references(contents: List[Dict[str, Any]]) -> List[str]:
     for content in contents:
         if "parts" in content:
             for part in content["parts"]:
-                if not isinstance(part, dict) or "fileData" not in part:
+                if not isinstance(part, dict):
                     continue
-                file_data = part["fileData"]
-                if "fileUri" not in file_data:
+                file_data = part.get("fileData") or part.get("file_data") or {}
+                if not isinstance(file_data, dict):
                     continue
-                file_uri = file_data["fileUri"]
+                file_uri = file_data.get("fileUri") or file_data.get("file_uri")
+                if not file_uri:
+                    continue
                 # 從 URI 中提取文件名: BASE_URL/files/... 或 files/... 或 files/local/...
                 match = re.match(
                     rf"{re.escape(settings.BASE_URL)}/(files/.*)", file_uri

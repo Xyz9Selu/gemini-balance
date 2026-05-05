@@ -45,6 +45,37 @@ def _migrate_request_log_columns():
         logger.warning(f"Request log migration skipped or failed: {e}")
 
 
+def _ensure_log_indexes():
+    """Create indexes needed by stats charts and paginated log views."""
+    index_statements = [
+        "CREATE INDEX IF NOT EXISTS idx_request_log_request_time ON t_request_log (request_time)",
+        "CREATE INDEX IF NOT EXISTS idx_request_log_id ON t_request_log (id)",
+        "CREATE INDEX IF NOT EXISTS idx_request_log_api_key ON t_request_log (api_key)",
+        "CREATE INDEX IF NOT EXISTS idx_request_log_model_name ON t_request_log (model_name)",
+        "CREATE INDEX IF NOT EXISTS idx_request_log_status_code ON t_request_log (status_code)",
+        "CREATE INDEX IF NOT EXISTS idx_request_log_is_success ON t_request_log (is_success)",
+        "CREATE INDEX IF NOT EXISTS idx_error_logs_request_time ON t_error_logs (request_time)",
+        "CREATE INDEX IF NOT EXISTS idx_error_logs_id ON t_error_logs (id)",
+        "CREATE INDEX IF NOT EXISTS idx_error_logs_gemini_key ON t_error_logs (gemini_key)",
+        "CREATE INDEX IF NOT EXISTS idx_error_logs_error_code ON t_error_logs (error_code)",
+    ]
+    try:
+        inspector = inspect(engine)
+        tables = set(inspector.get_table_names())
+        if not {"t_request_log", "t_error_logs"} & tables:
+            return
+
+        with engine.connect() as conn:
+            for statement in index_statements:
+                table_name = statement.split(" ON ", 1)[1].split(" ", 1)[0]
+                if table_name in tables:
+                    conn.execute(text(statement))
+            conn.commit()
+        logger.info("Log indexes ensured successfully")
+    except Exception as e:
+        logger.warning(f"Log index migration skipped or failed: {e}")
+
+
 def create_tables():
     """
     创建数据库表
@@ -104,6 +135,9 @@ def initialize_database():
 
         # 迁移: 为 t_request_log 添加新列
         _migrate_request_log_columns()
+
+        # 迁移: 为日志查询和统计图创建索引
+        _ensure_log_indexes()
 
         # 导入环境变量
         import_env_to_settings()

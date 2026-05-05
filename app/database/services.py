@@ -16,6 +16,56 @@ from app.utils.helpers import redact_key_for_logging
 
 logger = get_database_logger()
 
+MAX_ERROR_LOG_STRING_BYTES = 4096
+
+
+def _summarize_large_string(value: str) -> Union[str, Dict[str, Any]]:
+    """Keep small text values, replace large strings with metadata."""
+    byte_length = len(value.encode("utf-8", errors="ignore"))
+    if byte_length <= MAX_ERROR_LOG_STRING_BYTES:
+        return value
+
+    return {
+        "_truncated": True,
+        "_original_bytes": byte_length,
+        "_preview": value[:512],
+    }
+
+
+def _sanitize_error_request_msg(value: Any) -> Any:
+    """Strip large inline request payloads before writing error logs."""
+    if isinstance(value, dict):
+        sanitized = {}
+        for key, item in value.items():
+            if key in {"data", "inline_data", "inlineData"}:
+                if isinstance(item, dict):
+                    mime_type = item.get("mime_type") or item.get("mimeType")
+                    data = item.get("data")
+                    sanitized[key] = {
+                        "_omitted": "inline payload removed from error log",
+                        "mime_type": mime_type,
+                        "data_bytes": (
+                            len(data.encode("utf-8", errors="ignore"))
+                            if isinstance(data, str)
+                            else None
+                        ),
+                    }
+                else:
+                    sanitized[key] = {
+                        "_omitted": "inline payload removed from error log"
+                    }
+                continue
+            sanitized[key] = _sanitize_error_request_msg(item)
+        return sanitized
+
+    if isinstance(value, list):
+        return [_sanitize_error_request_msg(item) for item in value]
+
+    if isinstance(value, str):
+        return _summarize_large_string(value)
+
+    return value
+
 
 async def get_all_settings() -> List[Dict[str, Any]]:
     """
@@ -141,6 +191,8 @@ async def add_error_log(
             else:
                 request_msg_json = None
 
+            request_msg_json = _sanitize_error_request_msg(request_msg_json)
+
         # 插入错误日志
         query = insert(ErrorLog).values(
             gemini_key=gemini_key,
@@ -193,7 +245,6 @@ async def get_error_logs(
             ErrorLog.gemini_key,
             ErrorLog.model_name,
             ErrorLog.error_type,
-            ErrorLog.error_log,
             ErrorLog.error_code,
             ErrorLog.request_time,
         )

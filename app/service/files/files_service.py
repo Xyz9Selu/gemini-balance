@@ -71,7 +71,14 @@ class FilesService:
             if body:
                 try:
                     request_data = json.loads(body)
-                    display_name = request_data.get("displayName", "")
+                    file_meta = request_data.get("file") or {}
+                    display_name = (
+                        request_data.get("displayName")
+                        or request_data.get("display_name")
+                        or file_meta.get("displayName")
+                        or file_meta.get("display_name")
+                        or ""
+                    )
                 except Exception:
                     pass
             upload_id = uuid.uuid4().hex

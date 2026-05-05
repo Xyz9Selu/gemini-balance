@@ -139,14 +139,16 @@ def _extract_file_references_from_body(body: bytes) -> list[str]:
             
             parts = content.get("parts", [])
             for part in parts:
-                if not isinstance(part, dict) or "fileData" not in part:
+                if not isinstance(part, dict):
                     continue
-                
-                file_data = part.get("fileData", {})
-                if not isinstance(file_data, dict) or "fileUri" not in file_data:
+
+                file_data = part.get("fileData") or part.get("file_data") or {}
+                if not isinstance(file_data, dict):
                     continue
-                
-                file_uri = file_data.get("fileUri", "")
+
+                file_uri = file_data.get("fileUri") or file_data.get("file_uri") or ""
+                if not file_uri:
+                    continue
                 # Extract file name from URI
                 # Format: https://generativelanguage.googleapis.com/v1beta/files/{file_id}
                 # or: files/{file_id} or files/local/{id}
@@ -161,7 +163,7 @@ def _extract_file_references_from_body(body: bytes) -> list[str]:
                     # Direct file reference without full URL (includes files/local/...)
                     file_names.append(file_uri)
                     logger.info(f"Found direct file reference in request: {file_uri}")
-    except (json.JSONDecodeError, KeyError, TypeError) as e:
+    except (UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError) as e:
         logger.debug(f"Failed to extract file references from body: {e}")
     
     return file_names
@@ -545,4 +547,3 @@ async def gemini_v1beta_proxy(
         status_code=502,
         media_type="application/json",
     )
-
